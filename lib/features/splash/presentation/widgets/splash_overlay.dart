@@ -2,37 +2,35 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/router/app_router.dart';
 import '../../../home/presentation/providers/home_providers.dart';
 
-class SplashPage extends ConsumerStatefulWidget {
-  const SplashPage({super.key});
+/// Shows the splash on top of the app while the home screen (and its Google
+/// Map) loads underneath. Because the real map is created during the splash,
+/// it is already drawn when the splash fades away.
+class SplashOverlay extends ConsumerStatefulWidget {
+  const SplashOverlay({super.key, required this.child});
+
+  final Widget child;
 
   @override
-  ConsumerState<SplashPage> createState() => _SplashPageState();
+  ConsumerState<SplashOverlay> createState() => _SplashOverlayState();
 }
 
-class _SplashPageState extends ConsumerState<SplashPage>
+class _SplashOverlayState extends ConsumerState<SplashOverlay>
     with SingleTickerProviderStateMixin {
   static const _minDuration = Duration(milliseconds: 1500);
   static const _maxWait = Duration(seconds: 8);
+  static const _fadeDuration = Duration(milliseconds: 400);
 
-  late final AnimationController _controller = AnimationController(
+  late final AnimationController _intro = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
   )..forward();
 
-  late final Animation<double> _fade = CurvedAnimation(
-    parent: _controller,
-    curve: Curves.easeOut,
-  );
-  late final Animation<double> _scale = Tween<double>(
-    begin: 0.8,
-    end: 1,
-  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+  bool _fading = false;
+  bool _gone = false;
 
   @override
   void initState() {
@@ -40,36 +38,76 @@ class _SplashPageState extends ConsumerState<SplashPage>
     _preload();
   }
 
-  /// Warms everything the home screen needs so it opens fully ready:
-  /// location permission + fix, photo marker icons, and trip list.
+  /// Waits for location, marker icons, trips and the map's first frame.
   Future<void> _preload() async {
+    final mapReady = Completer<void>();
+    ref.listenManual<bool>(mapReadyProvider, (_, ready) {
+      if (ready && !mapReady.isCompleted) mapReady.complete();
+    }, fireImmediately: true);
+
     final loading = Future.wait<Object?>([
       ref.read(currentPositionProvider.future),
       ref.read(placeMarkersProvider.future),
       ref.read(tripsProvider.future),
+      mapReady.future,
     ]).timeout(_maxWait, onTimeout: () => const []).catchError((_) => const []);
 
     await Future.wait([loading, Future<void>.delayed(_minDuration)]);
-    if (mounted) context.go(AppRouter.home);
+    if (!mounted) return;
+    setState(() => _fading = true);
+    await Future<void>.delayed(_fadeDuration);
+    if (mounted) setState(() => _gone = true);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _intro.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    return Stack(
+      textDirection: TextDirection.ltr,
+      children: [
+        Positioned.fill(child: widget.child),
+        if (!_gone)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: _fading,
+              child: AnimatedOpacity(
+                opacity: _fading ? 0 : 1,
+                duration: _fadeDuration,
+                child: _SplashContent(animation: _intro),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
-    return Scaffold(
-      backgroundColor: scheme.primary,
-      body: Center(
+class _SplashContent extends StatelessWidget {
+  const _SplashContent({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+    final scale = Tween<double>(
+      begin: 0.8,
+      end: 1,
+    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutBack));
+
+    return Material(
+      color: scheme.primary,
+      child: Center(
         child: FadeTransition(
-          opacity: _fade,
+          opacity: fade,
           child: ScaleTransition(
-            scale: _scale,
+            scale: scale,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

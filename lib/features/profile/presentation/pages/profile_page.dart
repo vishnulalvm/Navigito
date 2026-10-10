@@ -7,6 +7,7 @@ import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
 import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
 import '../../../my_trips/presentation/widgets/my_trip_tile.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/profile_providers.dart';
 import '../widgets/profile_stat.dart';
 
@@ -22,6 +23,7 @@ class ProfilePage extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final profile = ref.watch(profileProvider);
+    final user = ref.watch(authUserProvider).valueOrNull;
     final myTrips = ref.watch(myTripsProvider(MyTripsTab.mine));
     final tripsNotifier = ref.read(myTripsProvider(MyTripsTab.mine).notifier);
 
@@ -73,11 +75,13 @@ class ProfilePage extends ConsumerWidget {
                     children: [
                       CircleAvatar(
                         radius: 44,
-                        backgroundImage: NetworkImage(p.avatarUrl),
+                        backgroundImage: NetworkImage(
+                          user?.avatarUrl ?? p.avatarUrl,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        p.name,
+                        user?.name ?? p.name,
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -171,7 +175,8 @@ class ProfilePage extends ConsumerWidget {
                       icon: Icons.logout,
                       label: 'Log out',
                       color: scheme.error,
-                      onTap: () => _soon(context, 'Log out'),
+                      onTap: () =>
+                          ref.read(authControllerProvider.notifier).signOut(),
                     ),
                   ],
                 ),

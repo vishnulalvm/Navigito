@@ -11,6 +11,8 @@ class HomeMockDatasource {
       'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400';
   static const _food =
       'https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400';
+  static const _tea =
+      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800';
   static const _avatarA =
       'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100';
   static const _avatarB =
@@ -26,6 +28,16 @@ class HomeMockDatasource {
       authorName: 'Arjun',
       authorAvatarUrl: _avatarA,
       likes: 1200,
+      places: [
+        'kochi',
+        'angamaly',
+        'athirappilly',
+        'vazhachal',
+        'adimali',
+        'cheeyappara',
+        'munnar',
+        'kerala',
+      ],
       isFavorite: true,
     ),
     Trip(
@@ -37,7 +49,46 @@ class HomeMockDatasource {
       authorName: 'Sneha',
       authorAvatarUrl: _avatarB,
       likes: 856,
+      places: [
+        'kochi',
+        'angamaly',
+        'athirappilly',
+        'vazhachal',
+        'chalakudy',
+        'kerala',
+      ],
       isFavorite: true,
+    ),
+    Trip(
+      id: 't3',
+      title: 'Wayanad Weekend',
+      coverUrl: _tea,
+      days: 3,
+      stops: 10,
+      authorName: 'Rohit',
+      authorAvatarUrl: _avatarA,
+      likes: 640,
+      places: [
+        'kozhikode',
+        'calicut',
+        'lakkidi',
+        'vythiri',
+        'wayanad',
+        'kerala',
+      ],
+      distanceKm: 420,
+    ),
+    Trip(
+      id: 't4',
+      title: 'Kozhikode Food Trail',
+      coverUrl: _food,
+      days: 1,
+      stops: 8,
+      authorName: 'Neha',
+      authorAvatarUrl: _avatarB,
+      likes: 920,
+      places: ['kozhikode', 'calicut', 'mananchira', 'kerala'],
+      distanceKm: 160,
     ),
   ];
 

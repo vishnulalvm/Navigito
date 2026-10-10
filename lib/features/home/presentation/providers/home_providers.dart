@@ -7,6 +7,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../core/services/marker_icon_builder.dart';
+import '../../../trip_detail/domain/entities/trip_detail.dart';
+import '../../../trip_detail/domain/repositories/trip_detail_repository.dart';
+import '../../../trip_detail/domain/usecases/get_trip_detail.dart';
+import '../../../trip_detail/presentation/widgets/route_map_helpers.dart';
 import '../../domain/entities/map_place.dart';
 import '../../domain/entities/place_suggestion.dart';
 import '../../domain/entities/trip.dart';
@@ -22,7 +26,9 @@ final currentPositionProvider = FutureProvider<Position?>(
   (_) => sl<LocationService>().currentPosition(),
 );
 
-final mapTypeProvider = StateProvider<MapType>((_) => MapType.normal);
+/// True once the home map has been created and settled on its first camera.
+/// The splash overlay waits for this so the user never sees a blank map.
+final mapReadyProvider = StateProvider<bool>((_) => false);
 
 final mapPlacesProvider = FutureProvider<List<MapPlace>>((ref) async {
   final result = await GetMapPlaces(ref.watch(_repoProvider))();
@@ -66,6 +72,50 @@ class TripsNotifier extends AsyncNotifier<List<Trip>> {
 final tripsProvider = AsyncNotifierProvider<TripsNotifier, List<Trip>>(
   TripsNotifier.new,
 );
+
+enum TripFilter {
+  nearby('Nearby'),
+  trending('Trending'),
+  oneDay('1 Day'),
+  twoDays('2 Days'),
+  threePlusDays('3+ Days');
+
+  const TripFilter(this.label);
+  final String label;
+
+  List<Trip> apply(List<Trip> trips) => switch (this) {
+    TripFilter.nearby => trips,
+    TripFilter.trending => [
+      ...trips,
+    ]..sort((a, b) => b.likes.compareTo(a.likes)),
+    TripFilter.oneDay => trips.where((t) => t.days == 1).toList(),
+    TripFilter.twoDays => trips.where((t) => t.days == 2).toList(),
+    TripFilter.threePlusDays => trips.where((t) => t.days >= 3).toList(),
+  };
+}
+
+final tripFilterProvider = StateProvider<TripFilter>((_) => TripFilter.nearby);
+
+/// Place picked from the search bar (e.g. "Munnar"); null = no place filter.
+final searchedPlaceProvider = StateProvider<String?>((_) => null);
+
+final filteredTripsProvider = Provider<AsyncValue<List<Trip>>>((ref) {
+  final filter = ref.watch(tripFilterProvider);
+  final place = ref.watch(searchedPlaceProvider)?.toLowerCase();
+
+  return ref.watch(tripsProvider).whenData((trips) {
+    // Dummy place match; the backend will do this with a geo query.
+    final inPlace = place == null
+        ? trips
+        : trips
+              .where(
+                (t) =>
+                    t.places.any((p) => place.contains(p) || p.contains(place)),
+              )
+              .toList();
+    return filter.apply(inPlace);
+  });
+});
 
 class SearchNotifier extends StateNotifier<AsyncValue<List<PlaceSuggestion>>> {
   SearchNotifier(this._repo) : super(const AsyncData([]));
@@ -112,3 +162,31 @@ final searchProvider =
       SearchNotifier,
       AsyncValue<List<PlaceSuggestion>>
     >((ref) => SearchNotifier(ref.watch(_repoProvider)));
+
+/// The trip whose route is currently drawn on the home map (null = none).
+class ActiveRouteNotifier extends AsyncNotifier<TripDetail?> {
+  @override
+  Future<TripDetail?> build() async => null;
+
+  Future<void> show(String tripId) async {
+    state = const AsyncLoading();
+    final result = await GetTripDetail(sl<TripDetailRepository>())(tripId);
+    state = result.fold(
+      (f) => AsyncError(f.message, StackTrace.current),
+      AsyncData.new,
+    );
+  }
+
+  void clear() => state = const AsyncData(null);
+}
+
+final activeRouteProvider =
+    AsyncNotifierProvider<ActiveRouteNotifier, TripDetail?>(
+      ActiveRouteNotifier.new,
+    );
+
+final routeMarkersProvider = FutureProvider<Set<Marker>>((ref) async {
+  final trip = ref.watch(activeRouteProvider).valueOrNull;
+  if (trip == null) return const {};
+  return buildRouteMarkers(trip);
+});

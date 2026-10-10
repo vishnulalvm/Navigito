@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
 
@@ -89,7 +90,15 @@ class OverviewTab extends ConsumerWidget {
             child: Row(
               children: [
                 InkWell(
-                  onTap: notifier.toggleLike,
+                  onTap: () async {
+                    if (await ensureSignedIn(
+                      context,
+                      ref,
+                      reason: 'Sign in to like trips',
+                    )) {
+                      notifier.toggleLike();
+                    }
+                  },
                   child: Row(
                     children: [
                       Icon(
@@ -110,7 +119,15 @@ class OverviewTab extends ConsumerWidget {
                 Text('${trip.comments}'),
                 const Spacer(),
                 FilledButton.tonalIcon(
-                  onPressed: notifier.toggleSave,
+                  onPressed: () async {
+                    if (await ensureSignedIn(
+                      context,
+                      ref,
+                      reason: 'Sign in to save trips',
+                    )) {
+                      notifier.toggleSave();
+                    }
+                  },
                   icon: Icon(
                     trip.isSaved ? Icons.bookmark : Icons.bookmark_border,
                   ),

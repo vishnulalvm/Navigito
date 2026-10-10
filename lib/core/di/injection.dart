@@ -19,6 +19,12 @@ import '../../features/notifications/domain/repositories/notifications_repositor
 import '../../features/profile/data/datasources/profile_mock_datasource.dart';
 import '../../features/profile/data/repositories/profile_repository_impl.dart';
 import '../../features/profile/domain/repositories/profile_repository.dart';
+import '../../features/trip_detail/data/datasources/routes_remote_datasource.dart';
+import '../../features/trip_detail/data/repositories/route_repository_impl.dart';
+import '../../features/trip_detail/domain/repositories/route_repository.dart';
+import '../../features/auth/data/datasources/auth_remote_datasource.dart';
+import '../../features/auth/data/repositories/auth_repository_impl.dart';
+import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../network/dio_client.dart';
 import '../services/location_service.dart';
 import '../services/marker_icon_builder.dart';
@@ -44,6 +50,12 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<TripDetailRepository>(
       () => TripDetailRepositoryImpl(TripDetailMockDatasource()),
+    )
+    ..registerLazySingleton<RouteRepository>(
+      () => RouteRepositoryImpl(RoutesRemoteDatasource(Dio())),
+    )
+    ..registerLazySingleton<AuthRepository>(
+      () => AuthRepositoryImpl(AuthRemoteDatasource()),
     )
     ..registerLazySingleton<MyTripsRepository>(
       () => MyTripsRepositoryImpl(MyTripsMockDatasource()),

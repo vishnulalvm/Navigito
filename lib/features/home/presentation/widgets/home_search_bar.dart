@@ -36,7 +36,12 @@ class _HomeSearchBarState extends ConsumerState<HomeSearchBar> {
           borderRadius: BorderRadius.circular(32),
           child: TextField(
             controller: _controller,
-            onChanged: notifier.onQueryChanged,
+            onChanged: (q) {
+              notifier.onQueryChanged(q);
+              if (q.isEmpty) {
+                ref.read(searchedPlaceProvider.notifier).state = null;
+              }
+            },
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: 'Search destinations, places, trips...',
@@ -50,6 +55,7 @@ class _HomeSearchBarState extends ConsumerState<HomeSearchBar> {
                       onPressed: () {
                         _controller.clear();
                         notifier.clear();
+                        ref.read(searchedPlaceProvider.notifier).state = null;
                         setState(() {});
                       },
                     ),
@@ -82,6 +88,11 @@ class _HomeSearchBarState extends ConsumerState<HomeSearchBar> {
                           onTap: () async {
                             FocusScope.of(context).unfocus();
                             _controller.text = s.description;
+                            ref.read(searchedPlaceProvider.notifier).state = s
+                                .description
+                                .split(',')
+                                .first
+                                .trim();
                             final target = await notifier.select(s);
                             if (target != null) widget.onPlaceSelected(target);
                           },

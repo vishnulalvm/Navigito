@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/presentation/widgets/auth_gate.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/main_shell/presentation/pages/main_shell_page.dart';
 import '../../features/my_trips/presentation/pages/my_trips_page.dart';
 import '../../features/add_trip/presentation/pages/add_trip_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
-import '../../features/splash/presentation/pages/splash_page.dart';
 import '../../features/trip_detail/presentation/pages/trip_detail_page.dart';
 
 abstract final class AppRouter {
-  static const splash = '/splash';
   static const home = '/';
   static const myTrips = '/my-trips';
   static const addTrip = '/add-trip';
@@ -20,9 +19,8 @@ abstract final class AppRouter {
   static String tripDetail(String id) => '/trip/$id';
 
   static final router = GoRouter(
-    initialLocation: splash,
+    initialLocation: home,
     routes: [
-      GoRoute(path: splash, builder: (context, state) => const SplashPage()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) =>
             MainShellPage(navigationShell: shell),
@@ -45,7 +43,13 @@ abstract final class AppRouter {
             routes: [
               GoRoute(
                 path: myTrips,
-                builder: (context, state) => const MyTripsPage(),
+                builder: (context, state) => const AuthGate(
+                  title: 'Your trips live here',
+                  message:
+                      'Sign in to see your saved, created and liked trips.',
+                  icon: Icons.map_outlined,
+                  child: MyTripsPage(),
+                ),
               ),
             ],
           ),
@@ -53,7 +57,12 @@ abstract final class AppRouter {
             routes: [
               GoRoute(
                 path: addTrip,
-                builder: (context, state) => const AddTripPage(),
+                builder: (context, state) => const AuthGate(
+                  title: 'Share your journey',
+                  message: 'Sign in to create and publish your own trips.',
+                  icon: Icons.add_location_alt_outlined,
+                  child: AddTripPage(),
+                ),
               ),
             ],
           ),
@@ -61,7 +70,12 @@ abstract final class AppRouter {
             routes: [
               GoRoute(
                 path: notifications,
-                builder: (context, state) => const NotificationsPage(),
+                builder: (context, state) => const AuthGate(
+                  title: 'Stay in the loop',
+                  message: 'Sign in to see likes, comments and new followers.',
+                  icon: Icons.notifications_none,
+                  child: NotificationsPage(),
+                ),
               ),
             ],
           ),
@@ -69,7 +83,13 @@ abstract final class AppRouter {
             routes: [
               GoRoute(
                 path: profile,
-                builder: (context, state) => const ProfilePage(),
+                builder: (context, state) => const AuthGate(
+                  title: 'Welcome to Navigito',
+                  message:
+                      'Sign in to build your profile and share trips with other travellers.',
+                  icon: Icons.person_outline,
+                  child: ProfilePage(),
+                ),
               ),
             ],
           ),

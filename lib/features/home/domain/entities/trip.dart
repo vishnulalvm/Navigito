@@ -11,6 +11,7 @@ class Trip extends Equatable {
     required this.authorAvatarUrl,
     required this.likes,
     this.distanceKm = 0,
+    this.places = const [],
     this.isFavorite = false,
   });
 
@@ -23,6 +24,9 @@ class Trip extends Equatable {
   final String authorAvatarUrl;
   final int likes;
   final int distanceKm;
+
+  /// Lowercase names of places the trip passes through (used for place search).
+  final List<String> places;
   final bool isFavorite;
 
   Trip copyWith({bool? isFavorite}) => Trip(
@@ -34,6 +38,8 @@ class Trip extends Equatable {
     authorName: authorName,
     authorAvatarUrl: authorAvatarUrl,
     likes: likes,
+    distanceKm: distanceKm,
+    places: places,
     isFavorite: isFavorite ?? this.isFavorite,
   );
 

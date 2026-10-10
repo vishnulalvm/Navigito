@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
 import '../widgets/overview_tab.dart';
@@ -53,6 +54,10 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
     );
   }
 
+  Future<void> _guarded(String reason, VoidCallback action) async {
+    if (await ensureSignedIn(context, ref, reason: reason)) action();
+  }
+
   Widget _buildContent(TripDetail trip) {
     final overview = _tabs.index == 0;
     final notifier = ref.read(tripDetailProvider(trip.id).notifier);
@@ -66,10 +71,18 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
           child: overview
               ? _FullHeader(
                   trip: trip,
-                  onFollow: notifier.toggleFollow,
-                  onLike: notifier.toggleLike,
+                  onFollow: () => _guarded(
+                    'Sign in to follow travellers',
+                    notifier.toggleFollow,
+                  ),
+                  onLike: () =>
+                      _guarded('Sign in to like trips', notifier.toggleLike),
                 )
-              : _CompactHeader(trip: trip, onLike: notifier.toggleLike),
+              : _CompactHeader(
+                  trip: trip,
+                  onLike: () =>
+                      _guarded('Sign in to like trips', notifier.toggleLike),
+                ),
         ),
         TabBar(
           controller: _tabs,
