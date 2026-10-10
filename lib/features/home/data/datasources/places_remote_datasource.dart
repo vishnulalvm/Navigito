@@ -63,7 +63,8 @@ class PlacesRemoteDatasource {
             'X-Goog-FieldMask':
                 'suggestions.placePrediction.placeId,'
                 'suggestions.placePrediction.structuredFormat,'
-                'suggestions.placePrediction.distanceMeters',
+                'suggestions.placePrediction.distanceMeters,'
+                'suggestions.placePrediction.types',
           },
         ),
       );
@@ -97,6 +98,7 @@ class PlacesRemoteDatasource {
           ((m['startOffset'] as int?) ?? 0, m['endOffset'] as int),
       ],
       distanceMeters: p['distanceMeters'] as int?,
+      types: [...?(p['types'] as List?)?.cast<String>()],
     );
   }
 

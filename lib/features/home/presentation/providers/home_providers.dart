@@ -7,6 +7,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../core/services/marker_icon_builder.dart';
+import '../../../../core/utils/location_input.dart';
+import '../../../../core/utils/plus_code.dart';
 import '../../../../core/utils/session_token.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 import '../../../trip_detail/domain/repositories/trip_detail_repository.dart';
@@ -21,6 +23,7 @@ import '../../domain/usecases/get_map_places.dart';
 import '../../domain/usecases/get_nearby_trips.dart';
 import '../../domain/usecases/get_place_location.dart';
 import '../../domain/usecases/recent_places.dart';
+import '../../domain/usecases/resolve_maps_link.dart';
 import '../../domain/usecases/search_places.dart';
 
 final _repoProvider = Provider<HomeRepository>((_) => sl<HomeRepository>());
@@ -120,15 +123,44 @@ final filteredTripsProvider = Provider<AsyncValue<List<Trip>>>((ref) {
   });
 });
 
+/// A location typed or pasted directly (link, coordinates, plus code)
+/// rather than searched for.
+class DirectLocation {
+  const DirectLocation({
+    required this.source,
+    this.position,
+    this.name,
+    this.resolving = false,
+    this.error,
+  });
+
+  final LocationSource source;
+
+  /// Null while [resolving] or after an [error].
+  final LatLng? position;
+
+  /// Place name, when a Maps link carries one.
+  final String? name;
+
+  /// A short link or short plus code is being looked up.
+  final bool resolving;
+  final String? error;
+}
+
 class SearchState {
   const SearchState({
     this.query = '',
     this.places = const [],
     this.loading = false,
     this.error,
+    this.direct,
   });
 
   final String query;
+
+  /// Set when [query] is a link, coordinates or a plus code; Google
+  /// autocomplete is skipped then.
+  final DirectLocation? direct;
 
   /// Google results for the latest finished request. Kept while the next one
   /// loads, so the list doesn't flicker between keystrokes.
@@ -146,11 +178,13 @@ class SearchState {
     List<PlaceSuggestion>? places,
     bool? loading,
     String? Function()? error,
+    DirectLocation? Function()? direct,
   }) => SearchState(
     query: query ?? this.query,
     places: places ?? this.places,
     loading: loading ?? this.loading,
     error: error != null ? error() : this.error,
+    direct: direct != null ? direct() : this.direct,
   );
 }
 
@@ -169,6 +203,12 @@ class SearchNotifier extends StateNotifier<SearchState> {
   void onQueryChanged(String query) {
     _debounce?.cancel();
     state = state.copyWith(query: query);
+    final input = parseLocationInput(query);
+    if (input != null) {
+      _openDirect(input, query);
+      return;
+    }
+    state = state.copyWith(direct: () => null);
     if (!state.searchesRemote) {
       state = state.copyWith(
         places: const [],
@@ -183,13 +223,110 @@ class SearchNotifier extends StateNotifier<SearchState> {
     _debounce = Timer(const Duration(milliseconds: 400), _search);
   }
 
+  /// Turns a link, coordinates or plus code into a point, mostly without
+  /// any API call. Only a link without coordinates falls back to searching
+  /// the place it names.
+  Future<void> _openDirect(LocationInput input, String query) async {
+    bool stale() => !mounted || state.query != query;
+    void show(DirectLocation direct) => state = state.copyWith(
+      places: const [],
+      loading: false,
+      error: () => null,
+      direct: () => direct,
+    );
+
+    switch (input) {
+      case PointInput():
+        show(
+          DirectLocation(
+            source: input.source,
+            position: LatLng(input.latitude, input.longitude),
+            name: input.name,
+          ),
+        );
+      case ShortLinkInput(:final url):
+        show(
+          const DirectLocation(
+            source: LocationSource.mapsLink,
+            resolving: true,
+          ),
+        );
+        final result = await ResolveMapsLink(_repo)(url.toString());
+        if (stale()) return;
+        final full = result.fold((_) => null, parseMapsUrl);
+        if (full == null || full is ShortLinkInput) {
+          show(
+            const DirectLocation(
+              source: LocationSource.mapsLink,
+              error: 'Could not open this link',
+            ),
+          );
+        } else {
+          await _openDirect(full, query);
+        }
+      case LinkQueryInput(query: final name):
+        state = state.copyWith(
+          direct: () => null,
+          loading: true,
+          error: () => null,
+        );
+        await _search(text: name);
+      case ShortPlusCodeInput(:final code, :final locality):
+        show(
+          const DirectLocation(
+            source: LocationSource.plusCode,
+            resolving: true,
+          ),
+        );
+        final near = await _plusCodeReference(locality);
+        if (stale()) return;
+        if (near == null) {
+          show(
+            DirectLocation(
+              source: LocationSource.plusCode,
+              error: 'Add a town after the code, e.g. "$code Kochi"',
+            ),
+          );
+          return;
+        }
+        final (lat, lng) = PlusCode.recoverNearest(code, near.$1, near.$2);
+        show(
+          DirectLocation(
+            source: LocationSource.plusCode,
+            position: LatLng(lat, lng),
+          ),
+        );
+    }
+  }
+
+  /// Where a short plus code is near: the town written after it (one cached
+  /// Places lookup), else the user.
+  Future<(double, double)?> _plusCodeReference(String? locality) async {
+    if (locality != null) {
+      final token = newSessionToken();
+      final found = await SearchPlaces(_repo)(locality, sessionToken: token);
+      final first = found.fold((_) => null, (p) => p.firstOrNull);
+      if (first != null) {
+        final loc = await GetPlaceLocation(_repo)(
+          first.placeId,
+          sessionToken: token,
+        );
+        if (loc.getRight().toNullable() case final point?) return point;
+      }
+    }
+    final pos = _ref.read(currentPositionProvider).valueOrNull;
+    return pos == null ? null : (pos.latitude, pos.longitude);
+  }
+
   /// Runs the search for the current query now (also used by "Retry").
-  Future<void> _search() async {
+  /// [text] searches something else for this query, e.g. the place a
+  /// pasted link names.
+  Future<void> _search({String? text}) async {
     final query = state.query;
     state = state.copyWith(loading: true, error: () => null);
     final pos = _ref.read(currentPositionProvider).valueOrNull;
     final result = await SearchPlaces(_repo)(
-      query,
+      text ?? query,
       sessionToken: _sessionToken ??= newSessionToken(),
       latitude: pos?.latitude,
       longitude: pos?.longitude,
@@ -204,7 +341,11 @@ class SearchNotifier extends StateNotifier<SearchState> {
 
   void retry() {
     _debounce?.cancel();
-    if (state.searchesRemote) _search();
+    if (parseLocationInput(state.query) case final input?) {
+      _openDirect(input, state.query);
+    } else if (state.searchesRemote) {
+      _search();
+    }
   }
 
   /// Resolves a Google suggestion to coordinates (ending the billing session)

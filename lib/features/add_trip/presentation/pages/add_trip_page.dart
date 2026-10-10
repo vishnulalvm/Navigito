@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../../core/di/injection.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../home/domain/entities/trip.dart';
-import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
-import '../../../my_trips/domain/repositories/my_trips_repository.dart';
-import '../../../my_trips/presentation/providers/my_trips_providers.dart';
-import '../../../trip_detail/presentation/widgets/stop_style.dart';
-import '../widgets/add_stop_sheet.dart';
-import '../widgets/draft_stop.dart';
+import '../../../../core/services/map_camera_cache.dart';
+import '../../../../core/theme/map_styles.dart';
+import '../../../../core/widgets/dropped_pin.dart';
+import '../../../../core/widgets/map_sheet.dart';
+import '../../../home/presentation/providers/home_providers.dart';
+import '../../../home/presentation/widgets/home_search_bar.dart';
+import '../../../home/presentation/widgets/map_round_button.dart';
+import '../../../trip_detail/presentation/widgets/route_map_helpers.dart';
+import '../providers/trip_draft_provider.dart';
+import '../widgets/draft_stops_sheet.dart';
 
+/// Step 1 of creating a trip: search places one after another and drop them
+/// on the map, in visiting order.
 class AddTripPage extends ConsumerStatefulWidget {
   const AddTripPage({super.key});
 
@@ -19,290 +27,325 @@ class AddTripPage extends ConsumerStatefulWidget {
 }
 
 class _AddTripPageState extends ConsumerState<AddTripPage> {
-  static const _categories = [
-    'Nature',
-    'Food',
-    'Hidden Spots',
-    'Road Trip',
-    'Adventure',
-    'Beach',
-  ];
-  static const _placeholderCover =
-      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400';
-  static const _selfAvatar =
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100';
+  static const _kochi = LatLng(9.9312, 76.2673);
 
-  final _formKey = GlobalKey<FormState>();
-  final _title = TextEditingController();
-  final _description = TextEditingController();
-  final _categoriesSelected = <String>{};
-  final _stops = <DraftStop>[];
-  int _days = 1;
-  bool _isPublic = true;
-  bool _stopsError = false;
+  final _sheet = MapSheetController(initialFraction: 0.4);
+  late final CameraPosition? _cachedCamera = sl<MapCameraCache>().read();
+  GoogleMapController? _map;
+
+  Set<Marker> _markers = const {};
+  String? _lastAddedId;
+
+  /// Where typed coordinates or a pasted link point, before it's added.
+  LatLng? _preview;
+
+  /// Where the user tapped the map; added with the card's button.
+  LatLng? _dropped;
+
+  /// Drawn pins by type and number; drawing one takes a frame or two.
+  final _pins = <String, BitmapDescriptor>{};
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(
+      tripDraftProvider.select((d) => d.stops),
+      (_, stops) => _refreshMarkers(stops),
+      fireImmediately: true,
+    );
+  }
 
   @override
   void dispose() {
-    _title.dispose();
-    _description.dispose();
+    _sheet.dispose();
     super.dispose();
   }
 
-  Future<void> _addStop() async {
-    final stop = await showAddStopSheet(context, days: _days);
-    if (stop == null) return;
-    setState(() {
-      _stops.add(stop);
-      _stops.sort((a, b) {
-        final byDay = a.day.compareTo(b.day);
-        if (byDay != 0) return byDay;
-        return (a.time.hour * 60 + a.time.minute).compareTo(
-          b.time.hour * 60 + b.time.minute,
+  Future<void> _refreshMarkers(List<DraftStop> stops) async {
+    final markers = <Marker>{};
+    for (final (i, s) in stops.indexed) {
+      final key = '${s.type.name}-${i + 1}';
+      final icon = _pins[key] ??= await buildStopPin(s.type, label: '${i + 1}');
+      markers.add(
+        Marker(
+          markerId: MarkerId(s.id),
+          position: s.position,
+          icon: icon,
+          anchor: const Offset(0.5, 0.5),
+          infoWindow: InfoWindow(title: s.name),
+          onTap: () => _focusStop(s),
+        ),
+      );
+    }
+    // A newer list may have finished drawing first.
+    if (mounted && identical(stops, ref.read(tripDraftProvider).stops)) {
+      setState(() => _markers = markers);
+    }
+  }
+
+  void _onPicked(PickedPlace place) {
+    final added = ref
+        .read(tripDraftProvider.notifier)
+        .addStop(
+          DraftStop(
+            id: place.id,
+            name: place.name,
+            subtitle: place.subtitle,
+            position: place.position,
+            type: stopTypeFor(place.types),
+          ),
         );
-      });
-      _stopsError = false;
-    });
+    if (!added) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('${place.name} is already in your trip')),
+        );
+      _goTo(place.position);
+      return;
+    }
+    HapticFeedback.lightImpact();
+    setState(() => _lastAddedId = place.id);
+    if (_sheet.currentSize > _sheet.initialSize) _sheet.rest();
+    _frameStops();
   }
 
-  void _setDays(int days) {
-    if (days < 1 || days > 14) return;
-    setState(() {
-      _days = days;
-      // Keep stops inside the new range.
-      _stops.removeWhere((s) => s.day > days);
-    });
-  }
-
-  void _create() {
-    final valid = _formKey.currentState!.validate();
-    setState(() => _stopsError = _stops.isEmpty);
-    if (!valid || _stops.isEmpty) return;
-
-    final trip = Trip(
-      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
-      title: _title.text.trim(),
-      coverUrl: _placeholderCover,
-      days: _days,
-      stops: _stops.length,
-      authorName: 'You',
-      authorAvatarUrl: _selfAvatar,
-      likes: 0,
+  /// Fits every stop on screen, above the resting sheet.
+  Future<void> _frameStops() async {
+    final points = [
+      for (final s in ref.read(tripDraftProvider).stops) s.position,
+    ];
+    if (points.isEmpty) return;
+    if (points.length == 1) return _goTo(points.first);
+    await _map?.animateCamera(
+      CameraUpdate.newLatLngBounds(boundsOf(points), 64),
     );
-    ref.read(myTripsProvider(MyTripsTab.mine).notifier).add(trip);
-    ref.read(myTripsTabProvider.notifier).state = MyTripsTab.mine;
-
-    _title.clear();
-    _description.clear();
-    setState(() {
-      _categoriesSelected.clear();
-      _stops.clear();
-      _days = 1;
-      _isPublic = true;
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Trip created')));
-    context.go(AppRouter.myTrips);
   }
+
+  Future<void> _focusStop(DraftStop stop) async {
+    await _goTo(stop.position, zoom: 14);
+    await _map?.showMarkerInfoWindow(MarkerId(stop.id));
+  }
+
+  Future<void> _goTo(LatLng target, {double zoom = 13}) async =>
+      _map?.animateCamera(CameraUpdate.newLatLngZoom(target, zoom));
+
+  Future<void> _goToMyLocation() async {
+    final pos = await ref.read(currentPositionProvider.future);
+    if (!mounted) return;
+    if (pos == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location unavailable. Check permission.'),
+        ),
+      );
+      return;
+    }
+    _goTo(LatLng(pos.latitude, pos.longitude), zoom: 14);
+  }
+
+  void _onPreview(LatLng? position) {
+    setState(() {
+      _preview = position;
+      if (position != null) _dropped = null;
+    });
+    if (position != null) _goTo(position, zoom: 15);
+  }
+
+  void _onMapTap(LatLng position) {
+    // A tap that only closes the keyboard shouldn't drop a pin too.
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _dropped = position;
+      _preview = null;
+    });
+  }
+
+  void _addDropped() {
+    final pos = _dropped;
+    if (pos == null) return;
+    setState(() => _dropped = null);
+    _onPicked(
+      PickedPlace(
+        id:
+            'geo:${pos.latitude.toStringAsFixed(6)},'
+            '${pos.longitude.toStringAsFixed(6)}',
+        name: formatLatLng(pos),
+        subtitle: 'Dropped pin',
+        position: pos,
+      ),
+    );
+  }
+
+  void _next() {
+    ref.read(tripDraftProvider.notifier).planIfNeeded();
+    context.push(AppRouter.addTripTimeline);
+  }
+
+  /// The draft stays in memory, so closing loses nothing.
+  void _close() =>
+      context.canPop() ? context.pop() : context.go(AppRouter.home);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    InputDecoration deco(String label, {String? hint}) => InputDecoration(
-      labelText: label,
-      hintText: hint,
-      filled: true,
-      fillColor: scheme.surfaceContainer,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-    );
-
-    Widget heading(String text) => Padding(
-      padding: const EdgeInsets.only(top: 22, bottom: 10),
-      child: Text(
-        text,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+    final media = MediaQuery.of(context);
+    final position = ref.watch(currentPositionProvider).valueOrNull;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final stops = ref.watch(tripDraftProvider.select((d) => d.stops));
 
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              12,
-              16,
-              FloatingNavBar.reservedSpace(context) + 8,
-            ),
+      resizeToAvoidBottomInset: false,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxHeight;
+          _sheet.layout(
+            height: height,
+            topInset: media.padding.top,
+            bottomSpace: media.padding.bottom,
+          );
+
+          return Stack(
             children: [
-              Text(
-                'Add Trip',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+              GoogleMap(
+                initialCameraPosition:
+                    _cachedCamera ??
+                    CameraPosition(
+                      target: position == null
+                          ? _kochi
+                          : LatLng(position.latitude, position.longitude),
+                      zoom: position == null ? 10 : 12,
+                    ),
+                style: isDark ? kDarkMapStyle : null,
+                markers: {
+                  ..._markers,
+                  if (_dropped ?? _preview case final pin?)
+                    previewMarker(
+                      pin,
+                      title: _dropped != null ? 'Dropped pin' : 'Preview',
+                    ),
+                },
+                // Straight, dashed: the order of visits, not the roads yet.
+                polylines: {
+                  if (stops.length > 1)
+                    Polyline(
+                      polylineId: const PolylineId('draft'),
+                      points: [for (final s in stops) s.position],
+                      color: const Color(0xFF3D8BFF),
+                      width: 4,
+                      patterns: [PatternItem.dash(18), PatternItem.gap(10)],
+                      jointType: JointType.round,
+                    ),
+                },
+                // Frames pins between the search bar and the resting sheet.
+                padding: EdgeInsets.only(
+                  top: media.padding.top + kMapSearchAreaHeight,
+                  bottom: _sheet.initialSize * height,
                 ),
+                myLocationEnabled: position != null,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                onTap: _onMapTap,
+                onMapCreated: (c) {
+                  _map = c;
+                  // Coming back to a draft, show what's already there.
+                  if (stops.isNotEmpty) _frameStops();
+                },
               ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _title,
-                textCapitalization: TextCapitalization.words,
-                decoration: deco('Trip title', hint: 'e.g. Kochi to Munnar'),
-                validator: (v) => (v == null || v.trim().length < 3)
-                    ? 'Enter at least 3 characters'
-                    : null,
+              DraftStopsSheet(
+                controller: _sheet,
+                bottomInset: media.padding.bottom + 16,
+                lastAddedId: _lastAddedId,
+                onNext: _next,
+                onStopTap: _focusStop,
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _description,
-                minLines: 3,
-                maxLines: 5,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: deco(
-                  'Description',
-                  hint: 'What makes this trip special?',
-                ),
-              ),
-              heading('Duration'),
-              Card(
-                margin: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+              if (_dropped case final pin?)
+                MapSheetFab(
+                  key: const ValueKey('dropped'),
+                  controller: _sheet,
+                  screenHeight: height,
+                  left: 16,
+                  child: TweenAnimationBuilder<double>(
+                    // Re-keyed per pin so each drop pops in.
+                    key: ValueKey(pin),
+                    tween: Tween(begin: 0.85, end: 1),
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutBack,
+                    builder: (context, scale, child) =>
+                        Transform.scale(scale: scale, child: child),
+                    child: DroppedPinCard(
+                      position: pin,
+                      actionLabel: 'Add stop',
+                      onAction: _addDropped,
+                      onClose: () => setState(() => _dropped = null),
+                    ),
                   ),
+                )
+              else
+                MapSheetFab(
+                  controller: _sheet,
+                  screenHeight: height,
+                  child: MapRoundButton(
+                    icon: Icons.my_location,
+                    onPressed: _goToMyLocation,
+                  ),
+                ),
+              MapSearchBackdrop(controller: _sheet),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                        onPressed: _days > 1 ? () => _setDays(_days - 1) : null,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
+                      _CloseButton(dock: _sheet.dock, onPressed: _close),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          '$_days ${_days == 1 ? 'Day' : 'Days'}',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium,
+                        child: HomeSearchBar(
+                          stopPicker: true,
+                          hintText: 'Search a place to add',
+                          onPlaceSelected: _onPicked,
+                          onPreview: _onPreview,
+                          dock: _sheet.dock,
                         ),
-                      ),
-                      IconButton(
-                        onPressed: _days < 14
-                            ? () => _setDays(_days + 1)
-                            : null,
-                        icon: const Icon(Icons.add_circle_outline),
                       ),
                     ],
                   ),
                 ),
               ),
-              heading('Categories'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final c in _categories)
-                    FilterChip(
-                      label: Text(c),
-                      selected: _categoriesSelected.contains(c),
-                      onSelected: (on) => setState(
-                        () => on
-                            ? _categoriesSelected.add(c)
-                            : _categoriesSelected.remove(c),
-                      ),
-                    ),
-                ],
-              ),
-              heading('Visibility'),
-              SegmentedButton<bool>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Public'),
-                    icon: Icon(Icons.public),
-                  ),
-                  ButtonSegment(
-                    value: false,
-                    label: Text('Private'),
-                    icon: Icon(Icons.lock_outline),
-                  ),
-                ],
-                selected: {_isPublic},
-                onSelectionChanged: (s) => setState(() => _isPublic = s.first),
-              ),
-              heading('Stops'),
-              for (var i = 0; i < _stops.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: _stops[i].type.color,
-                        child: Icon(
-                          _stops[i].type.icon,
-                          size: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                      title: Text(_stops[i].name),
-                      subtitle: Text(
-                        'Day ${_stops[i].day} · ${_stops[i].timeLabel}',
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _stops.removeAt(i)),
-                      ),
-                    ),
-                  ),
-                ),
-              OutlinedButton.icon(
-                onPressed: _addStop,
-                icon: const Icon(Icons.add_location_alt_outlined),
-                label: const Text('Add stop'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-              if (_stopsError)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 4),
-                  child: Text(
-                    'Add at least one stop',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.error,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 28),
-              FilledButton(
-                onPressed: _create,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: const Text('Create Trip'),
-              ),
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Round ✕ beside the search bar; flattens with it as the sheet docks.
+class _CloseButton extends StatelessWidget {
+  const _CloseButton({required this.dock, required this.onPressed});
+
+  final ValueNotifier<double> dock;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<double>(
+      valueListenable: dock,
+      builder: (context, dock, _) => Material(
+        color: Color.lerp(scheme.surface, scheme.surfaceContainerHigh, dock),
+        elevation: 3 * (1 - dock),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: 52,
+            child: Tooltip(
+              message: 'Close',
+              child: Icon(Icons.close, color: scheme.onSurface),
+            ),
           ),
         ),
       ),

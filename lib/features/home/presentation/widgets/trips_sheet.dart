@@ -4,15 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/widgets/map_sheet.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip.dart';
 import '../providers/home_providers.dart';
 import 'trip_card.dart';
-
-/// Height of the drag handle + title row, used to size the collapsed sheet.
-const double kTripsSheetHeaderHeight = 84;
-
-const double _sheetRadius = 28;
 
 /// How many cards play the staggered entrance; later ones are off-screen.
 const int _staggeredCards = 6;
@@ -24,22 +20,11 @@ class TripsSheet extends ConsumerStatefulWidget {
   const TripsSheet({
     super.key,
     required this.controller,
-    required this.minSize,
-    required this.initialSize,
-    required this.maxSize,
-    required this.dock,
     required this.bottomInset,
     required this.onShowRoute,
   });
 
-  final DraggableScrollableController controller;
-  final double minSize;
-  final double initialSize;
-  final double maxSize;
-
-  /// 0..1 as the sheet nears its top stop: corners flatten, the shadow and
-  /// handle fade, and the sheet joins the surface behind the search bar.
-  final ValueListenable<double> dock;
+  final MapSheetController controller;
 
   /// Extra list padding so the last card clears the floating navbar.
   final double bottomInset;
@@ -87,97 +72,47 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
     final filter = ref.watch(tripFilterProvider);
     final place = ref.watch(searchedPlaceProvider);
 
-    return DraggableScrollableSheet(
+    return MapSheet(
       controller: widget.controller,
-      initialChildSize: widget.initialSize,
-      minChildSize: widget.minSize,
-      maxChildSize: widget.maxSize,
-      snap: true,
-      snapSizes: [widget.initialSize],
-      builder: (context, scrollController) {
-        final content = CustomScrollView(
-          controller: scrollController,
-          slivers: [
-            // Rebuilt with the dock progress so the header can tighten up
-            // under the search bar.
-            ValueListenableBuilder<double>(
-              valueListenable: widget.dock,
-              builder: (context, dock, _) => SliverPersistentHeader(
-                pinned: true,
-                delegate: _HeaderDelegate(
-                  dock: dock,
-                  child: _HeaderRow(
-                    place: place,
-                    filter: filter,
-                    onClearPlace: () =>
-                        ref.read(searchedPlaceProvider.notifier).state = null,
-                    onFilter: (f) =>
-                        ref.read(tripFilterProvider.notifier).state = f,
-                  ),
-                ),
-              ),
-            ),
-            trips.when(
-              data: (items) => items.isEmpty
-                  ? const SliverToBoxAdapter(child: _EmptyState())
-                  : SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        4,
-                        16,
-                        widget.bottomInset,
-                      ),
-                      sliver: SliverList.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (_, i) => _Entrance(
-                          animation: _entrance,
-                          index: i,
-                          child: _buildCard(items[i]),
-                        ),
-                      ),
+      header: _HeaderRow(
+        place: place,
+        filter: filter,
+        onClearPlace: () =>
+            ref.read(searchedPlaceProvider.notifier).state = null,
+        onFilter: (f) => ref.read(tripFilterProvider.notifier).state = f,
+      ),
+      slivers: [
+        trips.when(
+          data: (items) => items.isEmpty
+              ? const SliverToBoxAdapter(child: _EmptyState())
+              : SliverPadding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, widget.bottomInset),
+                  sliver: SliverList.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) => _Entrance(
+                      animation: _entrance,
+                      index: i,
+                      child: _buildCard(items[i]),
                     ),
-              loading: () => SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                sliver: SliverList.separated(
-                  itemCount: 2,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (_, _) => const TripCardSkeleton(),
-                ),
-              ),
-              error: (_, _) => const SliverToBoxAdapter(
-                child: _Message(
-                  icon: Icons.cloud_off_outlined,
-                  text: 'Could not load trips',
-                ),
-              ),
-            ),
-          ],
-        );
-
-        return ValueListenableBuilder<double>(
-          valueListenable: widget.dock,
-          child: content,
-          builder: (context, dock, child) {
-            final radius = BorderRadius.vertical(
-              top: Radius.circular(_sheetRadius * (1 - dock)),
-            );
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: radius,
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 16,
-                    color: Colors.black.withValues(alpha: 0.38 * (1 - dock)),
                   ),
-                ],
-              ),
-              child: ClipRRect(borderRadius: radius, child: child),
-            );
-          },
-        );
-      },
+                ),
+          loading: () => SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            sliver: SliverList.separated(
+              itemCount: 2,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (_, _) => const TripCardSkeleton(),
+            ),
+          ),
+          error: (_, _) => const SliverToBoxAdapter(
+            child: _Message(
+              icon: Icons.cloud_off_outlined,
+              text: 'Could not load trips',
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -195,67 +130,6 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
       if (ok) ref.read(tripsProvider.notifier).toggleFavorite(trip.id);
     },
   );
-}
-
-/// Space the docked header gives back: the hidden handle and some padding.
-const double _dockedHeaderShrink = 24;
-
-/// Pinned so the title and filter stay reachable while the list scrolls; a
-/// hairline fades in once cards slide under it.
-class _HeaderDelegate extends SliverPersistentHeaderDelegate {
-  _HeaderDelegate({required this.dock, required this.child});
-
-  final double dock;
-  final Widget child;
-
-  @override
-  double get minExtent => kTripsSheetHeaderHeight - _dockedHeaderShrink * dock;
-
-  @override
-  double get maxExtent => minExtent;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
-    final scheme = Theme.of(context).colorScheme;
-    final scrolledUnder = shrinkOffset > 0;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: scrolledUnder
-                ? scheme.outlineVariant.withValues(alpha: 0.7)
-                : scheme.outlineVariant.withValues(alpha: 0),
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Docked under the search bar the sheet can only be dragged down,
-          // and the handle would read as a seam, so it collapses away.
-          SizedBox(height: 10 * (1 - dock)),
-          Opacity(
-            opacity: 1 - dock,
-            child: Container(
-              width: 40 - 16 * dock,
-              height: 4 * (1 - dock),
-              decoration: BoxDecoration(
-                color: scheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_HeaderDelegate old) =>
-      old.child != child || old.dock != dock;
 }
 
 class _HeaderRow extends StatelessWidget {

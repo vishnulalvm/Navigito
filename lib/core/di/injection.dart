@@ -4,6 +4,7 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/home/data/datasources/home_mock_datasource.dart';
+import '../../features/home/data/datasources/maps_link_remote_datasource.dart';
 import '../../features/home/data/datasources/places_remote_datasource.dart';
 import '../../features/home/data/datasources/recent_places_local_datasource.dart';
 import '../../features/home/data/repositories/home_repository_impl.dart';
@@ -49,6 +50,7 @@ Future<void> configureDependencies() async {
       () => HomeRepositoryImpl(
         HomeMockDatasource(),
         PlacesRemoteDatasource(Dio()),
+        MapsLinkRemoteDatasource(Dio()),
         RecentPlacesLocalDatasource(prefs),
       ),
     )

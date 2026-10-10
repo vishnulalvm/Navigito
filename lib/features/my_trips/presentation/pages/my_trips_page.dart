@@ -37,7 +37,7 @@ class MyTripsPage extends ConsumerWidget {
                     ),
                   ),
                   IconButton.filled(
-                    onPressed: () => context.go(AppRouter.addTrip),
+                    onPressed: () => context.push(AppRouter.addTrip),
                     icon: const Icon(Icons.add),
                     style: IconButton.styleFrom(
                       fixedSize: const Size(52, 52),

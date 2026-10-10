@@ -7,6 +7,7 @@ class PlaceSuggestion extends Equatable {
     this.secondaryText = '',
     this.mainMatches = const [],
     this.distanceMeters,
+    this.types = const [],
   });
 
   final String placeId;
@@ -22,6 +23,9 @@ class PlaceSuggestion extends Equatable {
 
   /// Straight-line distance from the user, when their location is known.
   final int? distanceMeters;
+
+  /// Google place types, e.g. `restaurant`, `lodging`, `tourist_attraction`.
+  final List<String> types;
 
   String get description =>
       secondaryText.isEmpty ? mainText : '$mainText, $secondaryText';

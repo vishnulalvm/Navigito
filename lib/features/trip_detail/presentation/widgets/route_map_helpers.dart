@@ -7,8 +7,13 @@ import '../../domain/entities/trip_detail.dart';
 import '../../domain/entities/trip_stop.dart';
 import 'stop_style.dart';
 
-/// Round, white-bordered pin with the stop type's icon.
-Future<BitmapDescriptor> buildStopPin(StopType type, {bool big = false}) async {
+/// Round, white-bordered pin with the stop type's icon, or [label] (e.g. the
+/// stop's number) in its place.
+Future<BitmapDescriptor> buildStopPin(
+  StopType type, {
+  bool big = false,
+  String? label,
+}) async {
   const size = 96.0;
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -22,14 +27,23 @@ Future<BitmapDescriptor> buildStopPin(StopType type, {bool big = false}) async {
   );
   final icon = type == StopType.start ? Icons.navigation : type.icon;
   final tp = TextPainter(
-    text: TextSpan(
-      text: String.fromCharCode(icon.codePoint),
-      style: TextStyle(
-        fontSize: 46,
-        fontFamily: icon.fontFamily,
-        color: Colors.white,
-      ),
-    ),
+    text: label != null
+        ? TextSpan(
+            text: label,
+            style: const TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          )
+        : TextSpan(
+            text: String.fromCharCode(icon.codePoint),
+            style: TextStyle(
+              fontSize: 46,
+              fontFamily: icon.fontFamily,
+              color: Colors.white,
+            ),
+          ),
     textDirection: TextDirection.ltr,
   )..layout();
   tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));

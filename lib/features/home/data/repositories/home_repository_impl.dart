@@ -8,14 +8,16 @@ import '../../domain/entities/recent_place.dart';
 import '../../domain/entities/trip.dart';
 import '../../domain/repositories/home_repository.dart';
 import '../datasources/home_mock_datasource.dart';
+import '../datasources/maps_link_remote_datasource.dart';
 import '../datasources/places_remote_datasource.dart';
 import '../datasources/recent_places_local_datasource.dart';
 
 class HomeRepositoryImpl implements HomeRepository {
-  HomeRepositoryImpl(this._mock, this._places, this._recent);
+  HomeRepositoryImpl(this._mock, this._places, this._links, this._recent);
 
   final HomeMockDatasource _mock;
   final PlacesRemoteDatasource _places;
+  final MapsLinkRemoteDatasource _links;
   final RecentPlacesLocalDatasource _recent;
 
   @override
@@ -45,6 +47,10 @@ class HomeRepositoryImpl implements HomeRepository {
     String placeId, {
     String? sessionToken,
   }) => _guard(() => _places.location(placeId, sessionToken: sessionToken));
+
+  @override
+  Future<Either<Failure, String>> resolveMapsLink(String url) =>
+      _guard(() => _links.resolve(url));
 
   @override
   List<RecentPlace> getRecentPlaces() => _recent.read();

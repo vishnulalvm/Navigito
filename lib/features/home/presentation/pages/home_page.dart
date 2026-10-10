@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/map_camera_cache.dart';
 import '../../../../core/theme/map_styles.dart';
+import '../../../../core/widgets/dropped_pin.dart';
+import '../../../../core/widgets/map_sheet.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 
 import '../../../trip_detail/presentation/providers/trip_detail_providers.dart';
@@ -27,17 +28,7 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   static const _kochi = LatLng(9.9312, 76.2673);
-  static const _initialSheetSize = 0.45;
-  static const _searchAreaHeight = 84.0;
-
-  /// How far below its top stop the sheet starts blending into the search bar.
-  static const _dockRange = 0.12;
-
-  /// Docked, the sheet tucks this far into the search area's bottom padding
-  /// so the title sits close under the search bar.
-  static const _dockLift = 12.0;
-
-  final _sheetController = DraggableScrollableController();
+  final _sheet = MapSheetController();
   final _cameraCache = sl<MapCameraCache>();
   GoogleMapController? _map;
 
@@ -51,42 +42,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _recentering = false;
   bool _settled = false;
 
-  /// Latest sheet extent (fraction of screen); null until the sheet reports.
-  final _sheetSize = ValueNotifier<double?>(null);
-
-  /// 0 while the sheet is low, 1 once it is docked under the search bar; the
-  /// sheet and search bar blend into one surface as it rises.
-  final _dock = ValueNotifier<double>(0);
-
-  void _setSheetSize(double size) {
-    _sheetSize.value = size;
-    _dock.value = ((size - (_maxSize - _dockRange)) / _dockRange).clamp(0, 1);
-  }
-
-  /// The controller can notify while the sheet is being built, and rebuilding
-  /// a listener then throws, so defer the update to after the frame.
-  void _onSheetChanged() {
-    if (!_sheetController.isAttached) return;
-    final size = _sheetController.size;
-    if (SchedulerBinding.instance.schedulerPhase ==
-        SchedulerPhase.persistentCallbacks) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _setSheetSize(size);
-      });
-    } else {
-      _setSheetSize(size);
-    }
-  }
-
-  // Latest layout values, kept for reacting to route changes outside build.
-  double _minSize = 0.2;
-  double _initialSize = _initialSheetSize;
-  double _maxSize = 1;
-
   @override
   void initState() {
     super.initState();
-    _sheetController.addListener(_onSheetChanged);
     ref.listenManual(activeRouteProvider, (_, next) {
       if (next.isLoading) {
         _collapseSheet();
@@ -137,31 +95,12 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   /// Gets the sheet out of the way as soon as a route is asked for, so the
   /// map and its loading status are visible while it loads.
-  void _collapseSheet() {
-    if (!_sheetController.isAttached) return;
-    _sheetController.animateTo(
-      _minSize,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-  }
+  void _collapseSheet() => _sheet.collapse();
 
   /// Collapse the sheet and frame the whole route on the map.
   Future<void> _onRouteChanged(TripDetail? trip) async {
-    if (!_sheetController.isAttached) return;
-    if (trip == null) {
-      await _sheetController.animateTo(
-        _initialSize,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-      return;
-    }
-    await _sheetController.animateTo(
-      _minSize,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
+    if (trip == null) return _sheet.rest();
+    await _sheet.collapse();
     // Frame the road path once the Routes API answers (straight stops if it
     // fails), unless the route was dismissed meanwhile.
     final path = await ref.read(roadRouteProvider(trip.id).future);
@@ -173,10 +112,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   void dispose() {
-    _sheetController.removeListener(_onSheetChanged);
-    _sheetSize.dispose();
-    _dock.dispose();
-    _sheetController.dispose();
+    _sheet.dispose();
     super.dispose();
   }
 
@@ -200,17 +136,19 @@ class _HomePageState extends ConsumerState<HomePage> {
   /// Where the picked search result is, pinned on the map until cleared.
   LatLng? _searchedPin;
 
+  /// Where typed coordinates or a pasted link point, before they're picked.
+  LatLng? _previewPin;
+
+  void _onPreview(LatLng? position) {
+    setState(() => _previewPin = position);
+    if (position != null) _goTo(position, zoom: 14);
+  }
+
   /// Pins the picked place, brings the sheet down so the pin isn't hidden
   /// behind it, flies there and names the spot.
   Future<void> _showSearchedPlace(LatLng target) async {
     setState(() => _searchedPin = target);
-    if (_sheetController.isAttached && _sheetController.size > _initialSize) {
-      _sheetController.animateTo(
-        _initialSize,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    if (_sheet.currentSize > _sheet.initialSize) _sheet.rest();
     await _goTo(target);
     if (mounted && _searchedPin == target) {
       await _map?.showMarkerInfoWindow(_searchedPinId);
@@ -240,6 +178,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         ? ref.watch(routeMarkersProvider).valueOrNull ?? const <Marker>{}
         : {
             ...?ref.watch(placeMarkersProvider).valueOrNull,
+            if (_previewPin case final pin?)
+              previewMarker(pin, title: 'Preview'),
             if (_searchedPin case final pin?)
               Marker(
                 markerId: _searchedPinId,
@@ -269,21 +209,11 @@ class _HomePageState extends ConsumerState<HomePage> {
         builder: (context, constraints) {
           final height = constraints.maxHeight;
 
-          // The collapsed sheet shows its header just above the navbar.
-          final minSize = ((navSpace + kTripsSheetHeaderHeight) / height).clamp(
-            0.1,
-            0.5,
+          _sheet.layout(
+            height: height,
+            topInset: topInset,
+            bottomSpace: navSpace,
           );
-          // Fully expanded, the sheet stops just under the search bar.
-          final maxSize =
-              (1 - (topInset + _searchAreaHeight - _dockLift) / height).clamp(
-                0.6,
-                1.0,
-              );
-          final initialSize = _initialSheetSize.clamp(minSize, maxSize);
-          _minSize = minSize;
-          _initialSize = initialSize;
-          _maxSize = maxSize;
 
           return Stack(
             children: [
@@ -311,8 +241,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                   // Keeps the map's focus area clear of the search bar and
                   // the collapsed sheet.
                   padding: EdgeInsets.only(
-                    top: topInset + _searchAreaHeight,
-                    bottom: minSize * height,
+                    top: topInset + kMapSearchAreaHeight,
+                    bottom: _sheet.minSize * height,
                   ),
                   myLocationEnabled: position != null,
                   myLocationButtonEnabled: false,
@@ -337,58 +267,20 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
               ),
               TripsSheet(
-                controller: _sheetController,
-                minSize: minSize,
-                initialSize: initialSize,
-                maxSize: maxSize,
-                dock: _dock,
+                controller: _sheet,
                 bottomInset: navSpace + 16,
                 onShowRoute: (id) =>
                     ref.read(activeRouteProvider.notifier).show(id),
               ),
-              // Rides on top of the sheet; hides once the sheet reaches the top.
-              ValueListenableBuilder<double?>(
-                valueListenable: _sheetSize,
-                builder: (context, reported, _) {
-                  final size = reported ?? initialSize;
-                  final atTop = size >= maxSize - 0.03;
-                  return Positioned(
-                    right: 16,
-                    bottom: size * height + 12,
-                    child: IgnorePointer(
-                      ignoring: atTop,
-                      child: AnimatedOpacity(
-                        opacity: atTop ? 0 : 1,
-                        duration: const Duration(milliseconds: 150),
-                        child: MapRoundButton(
-                          icon: Icons.my_location,
-                          onPressed: _goToMyLocation,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              // Fills in behind the search bar as the sheet docks, so the two
-              // read as one surface instead of a pill floating over the map.
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                height: topInset + _searchAreaHeight,
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _dock,
-                  builder: (context, dock, _) => IgnorePointer(
-                    ignoring: dock == 0,
-                    child: Opacity(
-                      opacity: Curves.easeIn.transform(dock),
-                      child: ColoredBox(
-                        color: Theme.of(context).colorScheme.surface,
-                      ),
-                    ),
-                  ),
+              MapSheetFab(
+                controller: _sheet,
+                screenHeight: height,
+                child: MapRoundButton(
+                  icon: Icons.my_location,
+                  onPressed: _goToMyLocation,
                 ),
               ),
+              MapSearchBackdrop(controller: _sheet),
               Positioned(
                 left: 16,
                 right: 16,
@@ -401,9 +293,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: HomeSearchBar(
-                    onPlaceSelected: _showSearchedPlace,
+                    onPlaceSelected: (p) => _showSearchedPlace(p.position),
+                    onPreview: _onPreview,
                     onUseMyLocation: _goToMyLocation,
-                    dock: _dock,
+                    dock: _sheet.dock,
                   ),
                 ),
               ),

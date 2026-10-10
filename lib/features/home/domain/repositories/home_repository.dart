@@ -26,6 +26,9 @@ abstract interface class HomeRepository {
     String? sessionToken,
   });
 
+  /// Expands a Google Maps short link to the full URL it points to.
+  Future<Either<Failure, String>> resolveMapsLink(String url);
+
   /// Places picked before, newest first.
   List<RecentPlace> getRecentPlaces();
   Future<void> saveRecentPlace(RecentPlace place);
