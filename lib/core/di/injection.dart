@@ -27,6 +27,7 @@ import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../network/dio_client.dart';
 import '../services/location_service.dart';
+import '../services/map_camera_cache.dart';
 import '../services/marker_icon_builder.dart';
 import '../storage/local_storage.dart';
 
@@ -41,6 +42,7 @@ Future<void> configureDependencies() async {
       () => LocalStorage(prefs, const FlutterSecureStorage()),
     )
     ..registerLazySingleton(LocationService.new)
+    ..registerLazySingleton(() => MapCameraCache(prefs))
     ..registerLazySingleton(() => MarkerIconBuilder(Dio()))
     ..registerLazySingleton<HomeRepository>(
       () => HomeRepositoryImpl(

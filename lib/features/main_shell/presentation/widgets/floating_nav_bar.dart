@@ -85,16 +85,41 @@ class FloatingNavBar extends StatelessWidget {
                     color: scheme.onSurface.withValues(alpha: 0.08),
                   ),
                 ),
-                child: Row(
+                child: Stack(
                   children: [
-                    for (var i = 0; i < items.length; i++)
-                      Expanded(
-                        child: _NavButton(
-                          item: items[i],
-                          selected: i == currentIndex,
-                          onTap: () => onTap(i),
+                    // Highlight that glides to the selected tab.
+                    AnimatedAlign(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment(
+                        items.length < 2
+                            ? 0
+                            : -1 + 2 * currentIndex / (items.length - 1),
+                        0,
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: 1 / items.length,
+                        heightFactor: 1,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(26),
+                          ),
                         ),
                       ),
+                    ),
+                    Row(
+                      children: [
+                        for (var i = 0; i < items.length; i++)
+                          Expanded(
+                            child: _NavButton(
+                              item: items[i],
+                              selected: i == currentIndex,
+                              onTap: () => onTap(i),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -127,17 +152,9 @@ class _NavButton extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          color: selected
-              ? scheme.primary.withValues(alpha: 0.16)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(26),
-        ),
+      child: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               selected ? item.activeIcon : item.icon,

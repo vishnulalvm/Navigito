@@ -38,19 +38,19 @@ class _SplashOverlayState extends ConsumerState<SplashOverlay>
     _preload();
   }
 
-  /// Waits for location, marker icons, trips and the map's first frame.
+  /// Waits only for the map's first frame (which on first launch includes the
+  /// location fix). Markers and trips fade in on their own afterwards.
   Future<void> _preload() async {
     final mapReady = Completer<void>();
     ref.listenManual<bool>(mapReadyProvider, (_, ready) {
       if (ready && !mapReady.isCompleted) mapReady.complete();
     }, fireImmediately: true);
+    // Start fetching early so they are usually in by the time the splash goes.
+    ref
+      ..read(placeMarkersProvider)
+      ..read(tripsProvider);
 
-    final loading = Future.wait<Object?>([
-      ref.read(currentPositionProvider.future),
-      ref.read(placeMarkersProvider.future),
-      ref.read(tripsProvider.future),
-      mapReady.future,
-    ]).timeout(_maxWait, onTimeout: () => const []).catchError((_) => const []);
+    final loading = mapReady.future.timeout(_maxWait, onTimeout: () {});
 
     await Future.wait([loading, Future<void>.delayed(_minDuration)]);
     if (!mounted) return;

@@ -1,3 +1,10 @@
+import 'dart:ui';
+
+/// Land colour of each map style, shown over the map until its first frame is
+/// drawn so the native view's black surface never shows.
+const kLightMapBackground = Color(0xFFF2F2F2);
+const kDarkMapBackground = Color(0xFF1D2330);
+
 /// Night style for the Google Map, used in dark mode.
 const String kDarkMapStyle = '''
 [

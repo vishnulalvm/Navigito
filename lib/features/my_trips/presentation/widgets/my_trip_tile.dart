@@ -31,7 +31,7 @@ class MyTripTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          height: 128,
+          height: 136,
           child: Row(
             children: [
               SizedBox(

@@ -3,6 +3,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../../core/di/injection.dart';
+import '../../../../core/services/map_camera_cache.dart';
 import '../../../../core/theme/map_styles.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 
@@ -27,7 +29,18 @@ class _HomePageState extends ConsumerState<HomePage> {
   static const _searchAreaHeight = 84.0;
 
   final _sheetController = DraggableScrollableController();
+  final _cameraCache = sl<MapCameraCache>();
   GoogleMapController? _map;
+
+  /// Where the map looked last session; lets the map open without a GPS fix.
+  late final CameraPosition? _cachedCamera = _cameraCache.read();
+  CameraPosition? _camera;
+
+  /// Opening on the cached camera, the map still moves to the user once their
+  /// location arrives — unless they have moved it themselves by then.
+  late bool _recenterPending = _cachedCamera != null;
+  bool _recentering = false;
+  bool _settled = false;
 
   /// Latest sheet extent (fraction of screen); null until the sheet reports.
   final _sheetSize = ValueNotifier<double?>(null);
@@ -59,6 +72,32 @@ class _HomePageState extends ConsumerState<HomePage> {
       activeRouteProvider,
       (_, next) => _onRouteChanged(next.valueOrNull),
     );
+    ref.listenManual(currentPositionProvider, (_, _) => _recenterOnUser());
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _map = controller;
+    _recenterOnUser();
+  }
+
+  /// Moves from the cached camera to the user's fix: instantly while the
+  /// splash still covers the map, animated after.
+  Future<void> _recenterOnUser() async {
+    final pos = ref.read(currentPositionProvider).valueOrNull;
+    final map = _map;
+    if (!_recenterPending || pos == null || map == null) return;
+    _recenterPending = false;
+    _recentering = true;
+    final update = CameraUpdate.newLatLngZoom(
+      LatLng(pos.latitude, pos.longitude),
+      12,
+    );
+    _settled ? await map.animateCamera(update) : await map.moveCamera(update);
+  }
+
+  void _onCameraMoveStarted() {
+    // Moves before the first idle are the map's own setup, not the user.
+    if (_settled && !_recentering) _recenterPending = false;
   }
 
   /// Collapse the sheet and frame the whole route on the map.
@@ -96,6 +135,9 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   /// First idle after creation means the initial camera and tiles are in.
   void _onMapSettled() {
+    _recentering = false;
+    _settled = true;
+    if (_camera case final camera?) _cameraCache.write(camera);
     if (ref.read(mapReadyProvider)) return;
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) ref.read(mapReadyProvider.notifier).state = true;
@@ -130,6 +172,14 @@ class _HomePageState extends ConsumerState<HomePage> {
         : ref.watch(placeMarkersProvider).valueOrNull ?? const <Marker>{};
     final positionAsync = ref.watch(currentPositionProvider);
     final position = positionAsync.valueOrNull;
+    // Only the very first launch, with no cached camera, waits for the fix so
+    // the map doesn't open on Kochi and jump. Later refreshes keep the value.
+    final waitForFix =
+        _cachedCamera == null &&
+        !positionAsync.hasValue &&
+        !positionAsync.hasError;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mapReady = ref.watch(mapReadyProvider);
 
     return Scaffold(
       body: LayoutBuilder(
@@ -152,24 +202,17 @@ class _HomePageState extends ConsumerState<HomePage> {
 
           return Stack(
             children: [
-              // Built only once the location has resolved, so the camera
-              // starts on the user and never jumps.
-              if (positionAsync.isLoading)
-                ColoredBox(
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  child: const SizedBox.expand(),
-                )
-              else
+              if (!waitForFix)
                 GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: position == null
-                        ? _kochi
-                        : LatLng(position.latitude, position.longitude),
-                    zoom: position == null ? 10 : 12,
-                  ),
-                  style: Theme.of(context).brightness == Brightness.dark
-                      ? kDarkMapStyle
-                      : null,
+                  initialCameraPosition:
+                      _cachedCamera ??
+                      CameraPosition(
+                        target: position == null
+                            ? _kochi
+                            : LatLng(position.latitude, position.longitude),
+                        zoom: position == null ? 10 : 12,
+                      ),
+                  style: isDark ? kDarkMapStyle : null,
                   markers: markers,
                   polylines: {
                     if (route != null)
@@ -190,9 +233,24 @@ class _HomePageState extends ConsumerState<HomePage> {
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
-                  onMapCreated: (c) => _map = c,
+                  onMapCreated: _onMapCreated,
+                  onCameraMoveStarted: _onCameraMoveStarted,
+                  onCameraMove: (camera) => _camera = camera,
                   onCameraIdle: _onMapSettled,
                 ),
+              // Hides the native view's black surface until the first tiles
+              // are drawn, in the map's own land colour.
+              IgnorePointer(
+                ignoring: mapReady,
+                child: AnimatedOpacity(
+                  opacity: mapReady ? 0 : 1,
+                  duration: const Duration(milliseconds: 250),
+                  child: ColoredBox(
+                    color: isDark ? kDarkMapBackground : kLightMapBackground,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
               TripsSheet(
                 controller: _sheetController,
                 minSize: minSize,
