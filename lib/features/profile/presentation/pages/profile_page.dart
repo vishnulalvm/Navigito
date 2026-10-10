@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/theme/theme_mode_provider.dart';
 import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
 import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
@@ -159,6 +160,8 @@ class ProfilePage extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
+                    const _ThemeTile(),
+                    const Divider(height: 1),
                     _MenuTile(
                       icon: Icons.help_outline,
                       label: 'Help & Support',
@@ -209,4 +212,47 @@ class _MenuTile extends StatelessWidget {
     trailing: const Icon(Icons.chevron_right),
     onTap: onTap,
   );
+}
+
+class _ThemeTile extends ConsumerWidget {
+  const _ThemeTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return ListTile(
+      leading: const Icon(Icons.brightness_6_outlined),
+      title: const Text('Appearance'),
+      subtitle: mode == ThemeMode.system
+          ? const Text('Following device')
+          : null,
+      trailing: SegmentedButton<ThemeMode>(
+        showSelectedIcon: false,
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        segments: const [
+          ButtonSegment(
+            value: ThemeMode.system,
+            icon: Icon(Icons.brightness_auto, size: 18),
+            tooltip: 'Auto',
+          ),
+          ButtonSegment(
+            value: ThemeMode.light,
+            icon: Icon(Icons.light_mode_outlined, size: 18),
+            tooltip: 'Light',
+          ),
+          ButtonSegment(
+            value: ThemeMode.dark,
+            icon: Icon(Icons.dark_mode_outlined, size: 18),
+            tooltip: 'Dark',
+          ),
+        ],
+        selected: {mode},
+        onSelectionChanged: (s) =>
+            ref.read(themeModeProvider.notifier).set(s.first),
+      ),
+    );
+  }
 }

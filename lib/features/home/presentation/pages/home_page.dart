@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../../core/theme/map_styles.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 
 import '../../../trip_detail/presentation/providers/trip_detail_providers.dart';
@@ -166,6 +167,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                         : LatLng(position.latitude, position.longitude),
                     zoom: position == null ? 10 : 12,
                   ),
+                  style: Theme.of(context).brightness == Brightness.dark
+                      ? kDarkMapStyle
+                      : null,
                   markers: markers,
                   polylines: {
                     if (route != null)
