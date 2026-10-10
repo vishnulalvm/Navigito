@@ -40,6 +40,9 @@ class RoutesRemoteDatasource {
               for (final p in middle.take(_maxIntermediates)) _waypoint(p),
             ],
           'travelMode': 'DRIVE',
+          // Traffic-aware routing bills at the Pro SKU; a trip's shape
+          // doesn't need it. (More than 10 intermediates is also Pro.)
+          'routingPreference': 'TRAFFIC_UNAWARE',
         },
         options: Options(
           headers: {

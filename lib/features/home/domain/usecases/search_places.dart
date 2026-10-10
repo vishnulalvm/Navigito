@@ -8,6 +8,15 @@ class SearchPlaces {
   const SearchPlaces(this._repository);
   final HomeRepository _repository;
 
-  Future<Either<Failure, List<PlaceSuggestion>>> call(String query) =>
-      _repository.searchPlaces(query);
+  Future<Either<Failure, List<PlaceSuggestion>>> call(
+    String query, {
+    String? sessionToken,
+    double? latitude,
+    double? longitude,
+  }) => _repository.searchPlaces(
+    query,
+    sessionToken: sessionToken,
+    latitude: latitude,
+    longitude: longitude,
+  );
 }

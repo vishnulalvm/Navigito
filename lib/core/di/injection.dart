@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/home/data/datasources/home_mock_datasource.dart';
 import '../../features/home/data/datasources/places_remote_datasource.dart';
+import '../../features/home/data/datasources/recent_places_local_datasource.dart';
 import '../../features/home/data/repositories/home_repository_impl.dart';
 import '../../features/home/domain/repositories/home_repository.dart';
 import '../../features/trip_detail/data/datasources/trip_detail_mock_datasource.dart';
@@ -48,6 +49,7 @@ Future<void> configureDependencies() async {
       () => HomeRepositoryImpl(
         HomeMockDatasource(),
         PlacesRemoteDatasource(Dio()),
+        RecentPlacesLocalDatasource(prefs),
       ),
     )
     ..registerLazySingleton<TripDetailRepository>(

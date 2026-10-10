@@ -30,7 +30,8 @@ void main() {
     );
 
     expect(find.text('Kochi to Munnar'), findsOneWidget);
-    expect(find.textContaining('2 days · 8 stops'), findsOneWidget);
+    expect(find.text('2 days'), findsOneWidget);
+    expect(find.text('8 stops'), findsOneWidget);
     expect(find.text('Arjun'), findsOneWidget);
     expect(find.text('1.2K'), findsOneWidget);
 

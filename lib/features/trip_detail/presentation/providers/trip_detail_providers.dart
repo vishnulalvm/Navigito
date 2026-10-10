@@ -35,12 +35,23 @@ final tripDetailProvider =
 
 /// Road-following path for a trip, cached per trip id. Falls back to straight
 /// lines between stops if the Routes API call fails.
+///
+/// Each run is a billed Routes API call, so it depends only on the stops'
+/// coordinates: liking, following or saving the trip must not re-request it.
 final roadRouteProvider = FutureProvider.family<List<LatLng>, String>((
   ref,
   tripId,
 ) async {
-  final trip = await ref.watch(tripDetailProvider(tripId).future);
-  final straight = routePoints(trip);
+  await ref.watch(
+    tripDetailProvider(tripId).selectAsync(
+      (t) => [
+        for (final p in routePoints(t)) '${p.latitude},${p.longitude}',
+      ].join('|'),
+    ),
+  );
+  final straight = routePoints(
+    await ref.read(tripDetailProvider(tripId).future),
+  );
 
   final result = await GetRoadPath(sl<RouteRepository>())([
     for (final p in straight) (p.latitude, p.longitude),

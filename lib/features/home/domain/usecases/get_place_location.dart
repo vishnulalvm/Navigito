@@ -7,6 +7,8 @@ class GetPlaceLocation {
   const GetPlaceLocation(this._repository);
   final HomeRepository _repository;
 
-  Future<Either<Failure, (double, double)>> call(String placeId) =>
-      _repository.getPlaceLocation(placeId);
+  Future<Either<Failure, (double, double)>> call(
+    String placeId, {
+    String? sessionToken,
+  }) => _repository.getPlaceLocation(placeId, sessionToken: sessionToken);
 }

@@ -7,17 +7,20 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../core/services/marker_icon_builder.dart';
+import '../../../../core/utils/session_token.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 import '../../../trip_detail/domain/repositories/trip_detail_repository.dart';
 import '../../../trip_detail/domain/usecases/get_trip_detail.dart';
 import '../../../trip_detail/presentation/widgets/route_map_helpers.dart';
 import '../../domain/entities/map_place.dart';
 import '../../domain/entities/place_suggestion.dart';
+import '../../domain/entities/recent_place.dart';
 import '../../domain/entities/trip.dart';
 import '../../domain/repositories/home_repository.dart';
 import '../../domain/usecases/get_map_places.dart';
 import '../../domain/usecases/get_nearby_trips.dart';
 import '../../domain/usecases/get_place_location.dart';
+import '../../domain/usecases/recent_places.dart';
 import '../../domain/usecases/search_places.dart';
 
 final _repoProvider = Provider<HomeRepository>((_) => sl<HomeRepository>());
@@ -117,37 +120,123 @@ final filteredTripsProvider = Provider<AsyncValue<List<Trip>>>((ref) {
   });
 });
 
-class SearchNotifier extends StateNotifier<AsyncValue<List<PlaceSuggestion>>> {
-  SearchNotifier(this._repo) : super(const AsyncData([]));
+class SearchState {
+  const SearchState({
+    this.query = '',
+    this.places = const [],
+    this.loading = false,
+    this.error,
+  });
 
-  final HomeRepository _repo;
+  final String query;
+
+  /// Google results for the latest finished request. Kept while the next one
+  /// loads, so the list doesn't flicker between keystrokes.
+  final List<PlaceSuggestion> places;
+  final bool loading;
+  final String? error;
+
+  /// Google is only asked from this many characters on.
+  static const minRemoteLength = 3;
+
+  bool get searchesRemote => query.trim().length >= minRemoteLength;
+
+  SearchState copyWith({
+    String? query,
+    List<PlaceSuggestion>? places,
+    bool? loading,
+    String? Function()? error,
+  }) => SearchState(
+    query: query ?? this.query,
+    places: places ?? this.places,
+    loading: loading ?? this.loading,
+    error: error != null ? error() : this.error,
+  );
+}
+
+class SearchNotifier extends StateNotifier<SearchState> {
+  SearchNotifier(this._ref) : super(const SearchState());
+
+  final Ref _ref;
   Timer? _debounce;
+
+  /// One token per search session (typing → picking a place), so Google bills
+  /// the session once instead of every autocomplete request.
+  String? _sessionToken;
+
+  HomeRepository get _repo => _ref.read(_repoProvider);
 
   void onQueryChanged(String query) {
     _debounce?.cancel();
-    if (query.trim().length < 2) {
-      state = const AsyncData([]);
+    state = state.copyWith(query: query);
+    if (!state.searchesRemote) {
+      state = state.copyWith(
+        places: const [],
+        loading: false,
+        error: () => null,
+      );
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 350), () async {
-      state = const AsyncLoading();
-      final result = await SearchPlaces(_repo)(query);
-      state = result.fold(
-        (f) => AsyncError(f.message, StackTrace.current),
-        AsyncData.new,
-      );
-    });
+    // Shown as loading from the first keystroke, so "No places found"
+    // doesn't flash before the request even starts.
+    state = state.copyWith(loading: true, error: () => null);
+    _debounce = Timer(const Duration(milliseconds: 400), _search);
   }
 
+  /// Runs the search for the current query now (also used by "Retry").
+  Future<void> _search() async {
+    final query = state.query;
+    state = state.copyWith(loading: true, error: () => null);
+    final pos = _ref.read(currentPositionProvider).valueOrNull;
+    final result = await SearchPlaces(_repo)(
+      query,
+      sessionToken: _sessionToken ??= newSessionToken(),
+      latitude: pos?.latitude,
+      longitude: pos?.longitude,
+    );
+    // Drop answers to queries the user has already typed past.
+    if (!mounted || query != state.query) return;
+    state = result.fold(
+      (f) => state.copyWith(loading: false, error: () => f.message),
+      (places) => state.copyWith(loading: false, places: places),
+    );
+  }
+
+  void retry() {
+    _debounce?.cancel();
+    if (state.searchesRemote) _search();
+  }
+
+  /// Resolves a Google suggestion to coordinates (ending the billing session)
+  /// and remembers it, so picking it again is free.
   Future<LatLng?> select(PlaceSuggestion s) async {
-    final result = await GetPlaceLocation(_repo)(s.placeId);
-    state = const AsyncData([]);
-    return result.fold((_) => null, (r) => LatLng(r.$1, r.$2));
+    _debounce?.cancel();
+    final result = await GetPlaceLocation(_repo)(
+      s.placeId,
+      sessionToken: _sessionToken,
+    );
+    _sessionToken = null;
+    return result.fold((_) => null, (r) {
+      _ref
+          .read(recentPlacesProvider.notifier)
+          .add(
+            RecentPlace(
+              placeId: s.placeId,
+              name: s.mainText,
+              secondaryText: s.secondaryText,
+              latitude: r.$1,
+              longitude: r.$2,
+              savedAt: DateTime.now(),
+            ),
+          );
+      return LatLng(r.$1, r.$2);
+    });
   }
 
   void clear() {
     _debounce?.cancel();
-    state = const AsyncData([]);
+    _sessionToken = null;
+    state = const SearchState();
   }
 
   @override
@@ -158,10 +247,71 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<PlaceSuggestion>>> {
 }
 
 final searchProvider =
-    StateNotifierProvider.autoDispose<
-      SearchNotifier,
-      AsyncValue<List<PlaceSuggestion>>
-    >((ref) => SearchNotifier(ref.watch(_repoProvider)));
+    StateNotifierProvider.autoDispose<SearchNotifier, SearchState>(
+      SearchNotifier.new,
+    );
+
+class RecentPlacesNotifier extends Notifier<List<RecentPlace>> {
+  @override
+  List<RecentPlace> build() => GetRecentPlaces(ref.read(_repoProvider))();
+
+  /// Moves [place] to the top (picking a recent again refreshes its age).
+  void add(RecentPlace place) {
+    state = [
+      place,
+      ...state.where((p) => p.placeId != place.placeId),
+    ].take(5).toList();
+    SaveRecentPlace(ref.read(_repoProvider))(place);
+  }
+}
+
+final recentPlacesProvider =
+    NotifierProvider<RecentPlacesNotifier, List<RecentPlace>>(
+      RecentPlacesNotifier.new,
+    );
+
+/// Matches found without any API call: recent picks, the app's own map places
+/// and trips. Shown above Google's results.
+class LocalMatches {
+  const LocalMatches({
+    this.recents = const [],
+    this.places = const [],
+    this.trips = const [],
+  });
+
+  final List<RecentPlace> recents;
+  final List<MapPlace> places;
+  final List<Trip> trips;
+
+  bool get isEmpty => recents.isEmpty && places.isEmpty && trips.isEmpty;
+}
+
+final localMatchesProvider = Provider.autoDispose<LocalMatches>((ref) {
+  final query = ref
+      .watch(searchProvider.select((s) => s.query))
+      .trim()
+      .toLowerCase();
+  final recents = ref.watch(recentPlacesProvider);
+  if (query.isEmpty) return LocalMatches(recents: recents);
+
+  bool hit(String text) => text.toLowerCase().contains(query);
+  final places = ref.watch(mapPlacesProvider).valueOrNull ?? const [];
+  final trips = ref.watch(tripsProvider).valueOrNull ?? const [];
+  return LocalMatches(
+    recents: [
+      for (final p in recents)
+        if (hit(p.name) || hit(p.secondaryText)) p,
+    ],
+    places: [
+      for (final p in places)
+        if (hit(p.name)) p,
+    ].take(3).toList(),
+    trips: [
+      for (final t in trips)
+        if (hit(t.title) || t.places.any(hit)) t,
+    ].take(3).toList(),
+  );
+});
 
 /// The trip whose route is currently drawn on the home map (null = none).
 class ActiveRouteNotifier extends AsyncNotifier<TripDetail?> {

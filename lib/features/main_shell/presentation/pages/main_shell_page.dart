@@ -31,6 +31,9 @@ class MainShellPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // The nav bar stays put under the keyboard. Each tab's own Scaffold
+      // still sees the keyboard inset and keeps its fields in view.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(child: navigationShell),

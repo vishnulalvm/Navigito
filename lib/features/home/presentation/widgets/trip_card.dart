@@ -1,214 +1,324 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/entities/trip.dart';
 
-class TripCard extends StatelessWidget {
+class TripCard extends StatefulWidget {
   const TripCard({
     super.key,
     required this.trip,
     required this.onFavorite,
     this.onTap,
-    this.onView,
     this.onRoute,
   });
 
   final Trip trip;
   final VoidCallback onFavorite;
+
+  /// Opens the trip; the whole card is the tap target.
   final VoidCallback? onTap;
-  final VoidCallback? onView;
   final VoidCallback? onRoute;
 
-  static const _radius = 10.0;
+  static const _radius = 16.0;
+  static const _imageAspect = 2.0;
 
   static String _compact(int n) => n >= 1000
       ? '${(n / 1000).toStringAsFixed(1).replaceAll('.0', '')}K'
       : '$n';
 
   @override
+  State<TripCard> createState() => _TripCardState();
+}
+
+class _TripCardState extends State<TripCard> {
+  /// Card sinks slightly while a finger is on it.
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
+    final trip = widget.trip;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final days = '${trip.days} ${trip.days == 1 ? 'day' : 'days'}';
-    final meta =
-        '$days · ${trip.stops} stops'
-        '${trip.distanceKm > 0 ? ' · ${trip.distanceKm} km' : ''}';
-    final overlayStyle = theme.textTheme.labelSmall?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w500,
-    );
 
-    return Material(
-      color: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_radius),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 2.1,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    trip.coverUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        ColoredBox(color: scheme.surfaceContainerHighest),
-                  ),
-                  // Just enough scrim to keep the small labels legible.
-                  const Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                      height: 44,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Colors.black45],
-                          ),
+    return AnimatedScale(
+      scale: _pressed ? 0.98 : 1,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(TripCard._radius),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: TripCard._imageAspect,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(color: scheme.surfaceContainerHighest),
+                    Image.network(
+                      trip.coverUrl,
+                      fit: BoxFit.cover,
+                      // Fades in over the placeholder instead of popping.
+                      frameBuilder: (_, child, frame, sync) => sync
+                          ? child
+                          : AnimatedOpacity(
+                              opacity: frame == null ? 0 : 1,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                              child: child,
+                            ),
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: _FavoriteButton(
+                        isFavorite: trip.isFavorite,
+                        onPressed: widget.onFavorite,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Text(
+                        trip.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 10,
-                    bottom: 7,
-                    child: Text(meta, style: overlayStyle),
-                  ),
-                  Positioned(
-                    right: 10,
-                    bottom: 7,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    const SizedBox(height: 6),
+                    // Facts live on the card, not over the photo, so they
+                    // stay legible whatever the image looks like.
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
                       children: [
-                        const Icon(
-                          Icons.thumb_up_alt_outlined,
-                          size: 12,
-                          color: Colors.white,
+                        _Fact(
+                          icon: Icons.calendar_today_outlined,
+                          text:
+                              '${trip.days} ${trip.days == 1 ? 'day' : 'days'}',
                         ),
-                        const SizedBox(width: 4),
-                        Text(_compact(trip.likes), style: overlayStyle),
+                        _Fact(
+                          icon: Icons.place_outlined,
+                          text: '${trip.stops} stops',
+                        ),
+                        if (trip.distanceKm > 0)
+                          _Fact(
+                            icon: Icons.straighten,
+                            text: '${trip.distanceKm} km',
+                          ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          trip.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 11,
+                          backgroundColor: scheme.surfaceContainerHighest,
+                          backgroundImage: NetworkImage(trip.authorAvatarUrl),
+                          onBackgroundImageError: (_, _) {},
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            trip.authorName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
-                      ),
-                      InkResponse(
-                        onTap: onFavorite,
-                        radius: 18,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            trip.isFavorite
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            size: 20,
-                            color: trip.isFavorite
-                                ? Colors.pinkAccent
-                                : scheme.onSurfaceVariant,
-                          ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          Icons.thumb_up_alt_outlined,
+                          size: 14,
+                          color: scheme.onSurfaceVariant,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundImage: NetworkImage(trip.authorAvatarUrl),
-                      ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          trip.authorName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 4),
+                        Text(
+                          TripCard._compact(trip.likes),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                      _SquareAction(
-                        icon: Icons.visibility_outlined,
-                        tooltip: 'View trip',
-                        onPressed: onView,
-                      ),
-                      const SizedBox(width: 6),
-                      _SquareAction(
-                        icon: Icons.route_outlined,
-                        tooltip: 'Show route on map',
-                        onPressed: onRoute,
-                      ),
-                    ],
-                  ),
-                ],
+                        const Spacer(),
+                        FilledButton.tonalIcon(
+                          onPressed: widget.onRoute,
+                          icon: const Icon(Icons.route_outlined, size: 18),
+                          label: const Text('Route'),
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Small bordered icon button with a tight corner radius.
-class _SquareAction extends StatelessWidget {
-  const _SquareAction({
-    required this.icon,
-    required this.tooltip,
-    this.onPressed,
-  });
+/// Icon + label for one trip fact (days, stops, distance).
+class _Fact extends StatelessWidget {
+  const _Fact({required this.icon, required this.text});
 
   final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+      ],
+    );
+  }
+}
+
+/// Round save button floating on the cover photo; the white backing keeps it
+/// visible on any image, and the heart pops when toggled.
+class _FavoriteButton extends StatelessWidget {
+  const _FavoriteButton({required this.isFavorite, required this.onPressed});
+
+  final bool isFavorite;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: isFavorite ? 'Remove from favourites' : 'Add to favourites',
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.92),
+        shape: const CircleBorder(),
+        elevation: 1,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onPressed();
+          },
+          child: SizedBox.square(
+            dimension: 38,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOutBack,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) =>
+                  ScaleTransition(scale: animation, child: child),
+              child: Icon(
+                isFavorite ? Icons.favorite : Icons.favorite_border,
+                key: ValueKey(isFavorite),
+                size: 20,
+                color: isFavorite ? Colors.pinkAccent : Colors.black87,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pulsing stand-in shaped like a [TripCard], shown while trips load.
+class TripCardSkeleton extends StatefulWidget {
+  const TripCardSkeleton({super.key});
+
+  @override
+  State<TripCardSkeleton> createState() => _TripCardSkeletonState();
+}
+
+class _TripCardSkeletonState extends State<TripCardSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(7),
-          side: BorderSide(color: scheme.outlineVariant),
-        ),
+    Widget bar(double width, double height) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+
+    return FadeTransition(
+      opacity: Tween(
+        begin: 0.5,
+        end: 1.0,
+      ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      child: Container(
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: SizedBox(
-            width: 32,
-            height: 30,
-            child: Icon(icon, size: 17, color: scheme.onSurface),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(TripCard._radius),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.6),
           ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: TripCard._imageAspect,
+              child: ColoredBox(color: scheme.surfaceContainerHighest),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bar(180, 16),
+                  const SizedBox(height: 10),
+                  bar(150, 12),
+                  const SizedBox(height: 14),
+                  bar(120, 20),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
