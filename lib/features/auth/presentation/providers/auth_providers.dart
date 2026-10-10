@@ -40,8 +40,17 @@ class AuthController extends AsyncNotifier<void> {
     return repo.currentUser != null;
   }
 
-  Future<void> signOut() async {
-    await SignOut(sl<AuthRepository>())();
+  /// Returns the error message, or null once signed out.
+  Future<String?> signOut() async {
+    final result = await SignOut(sl<AuthRepository>())();
+    return result.fold((f) => f.message, (_) => null);
+  }
+
+  /// Deletes the account for good and signs out. Returns the error message,
+  /// or null on success.
+  Future<String?> deleteAccount() async {
+    final result = await DeleteAccount(sl<AuthRepository>())();
+    return result.fold((f) => f.message, (_) => null);
   }
 }
 

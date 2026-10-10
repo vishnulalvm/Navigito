@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/injection.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../providers/auth_providers.dart';
+import 'legal_consent_text.dart';
 import 'social_sign_in_button.dart';
 
 /// Gate for actions (like, save, follow...). Returns true if the user is signed
@@ -42,6 +43,8 @@ Future<bool> ensureSignedIn(
           SocialSignInButton(
             onSignedIn: () => Navigator.of(sheetContext).pop(),
           ),
+          const SizedBox(height: 12),
+          const LegalConsentText(),
         ],
       ),
     ),

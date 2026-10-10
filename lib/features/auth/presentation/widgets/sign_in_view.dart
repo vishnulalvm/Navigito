@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import 'legal_consent_text.dart';
 import 'social_sign_in_button.dart';
 
 /// Full-page prompt shown on tabs that need an account.
@@ -55,6 +56,8 @@ class SignInView extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               const SocialSignInButton(),
+              const SizedBox(height: 12),
+              const LegalConsentText(),
               const SizedBox(height: 16),
               Text(
                 'Sign in to ${AppConstants.appName} to save, like and share trips.',

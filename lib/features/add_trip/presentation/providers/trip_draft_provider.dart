@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../trip_detail/domain/entities/trip_stop.dart';
 import '../../domain/entities/new_trip.dart';
 
@@ -199,7 +200,12 @@ class TripDraft {
 /// leaving and coming back doesn't lose the stops.
 class TripDraftNotifier extends Notifier<TripDraft> {
   @override
-  TripDraft build() => const TripDraft();
+  TripDraft build() {
+    // A draft belongs to whoever started it: signing out or switching
+    // accounts starts a fresh one.
+    ref.watch(authUserProvider.select((u) => u.valueOrNull?.id));
+    return const TripDraft();
+  }
 
   /// Adds [stop] at the end of the last day. False if it's already there.
   bool addStop(DraftStop stop) {

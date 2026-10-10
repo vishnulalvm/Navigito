@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:navigito/features/add_trip/presentation/providers/trip_draft_provider.dart';
+import 'package:navigito/features/auth/domain/entities/auth_user.dart';
+import 'package:navigito/features/auth/presentation/providers/auth_providers.dart';
 import 'package:navigito/features/trip_detail/domain/entities/trip_stop.dart';
 
 DraftStop _stop(String id) =>
@@ -15,13 +19,36 @@ void main() {
   List<String> ids() => [for (final s in state().stops) s.id];
   List<int> days() => [for (final s in state().stops) s.day];
 
-  setUp(() {
-    container = ProviderContainer();
+  setUp(() async {
+    container = _container();
+    // The draft resets when the user changes; settle on the user first.
+    container.listen(tripDraftProvider, (_, _) {});
+    await container.read(authUserProvider.future);
     for (final id in ['a', 'b', 'c', 'd', 'e', 'f']) {
       draft().addStop(_stop(id));
     }
   });
   tearDown(() => container.dispose());
+
+  test('switching accounts starts a fresh draft', () async {
+    final user = StreamController<AuthUser?>();
+    final c = ProviderContainer(
+      overrides: [authUserProvider.overrideWith((ref) => user.stream)],
+    );
+    addTearDown(() {
+      c.dispose();
+      user.close();
+    });
+    c.listen(tripDraftProvider, (_, _) {});
+    user.add(const AuthUser(id: 'u1', name: 'A'));
+    await Future<void>.delayed(Duration.zero);
+    c.read(tripDraftProvider.notifier).addStop(_stop('a'));
+    expect(c.read(tripDraftProvider).stops, hasLength(1));
+
+    user.add(const AuthUser(id: 'u2', name: 'B'));
+    await Future<void>.delayed(Duration.zero);
+    expect(c.read(tripDraftProvider).stops, isEmpty);
+  });
 
   test('rejects a place already in the trip', () {
     expect(draft().addStop(_stop('a')), isFalse);
@@ -87,3 +114,12 @@ void main() {
     expect(stopTypeFor(const []), StopType.attraction);
   });
 }
+
+/// Signed in as one user, without the real auth backend.
+ProviderContainer _container() => ProviderContainer(
+  overrides: [
+    authUserProvider.overrideWith(
+      (ref) => Stream.value(const AuthUser(id: 'u1', name: 'Arjun')),
+    ),
+  ],
+);

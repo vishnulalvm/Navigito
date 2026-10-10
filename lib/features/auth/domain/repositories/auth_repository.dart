@@ -10,4 +10,7 @@ abstract interface class AuthRepository {
   Future<Either<Failure, Unit>> signInWithGoogle();
   Future<Either<Failure, Unit>> signInWithApple();
   Future<Either<Failure, Unit>> signOut();
+
+  /// Permanently deletes the signed-in account and everything it made.
+  Future<Either<Failure, Unit>> deleteAccount();
 }

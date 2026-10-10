@@ -1,6 +1,7 @@
 import 'package:fpdart/fpdart.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
@@ -29,6 +30,9 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, Unit>> signOut() => _run(_remote.signOut);
 
+  @override
+  Future<Either<Failure, Unit>> deleteAccount() => _run(_remote.deleteAccount);
+
   Future<Either<Failure, Unit>> _run(Future<void> Function() action) async {
     try {
       await action();
@@ -42,8 +46,15 @@ class AuthRepositoryImpl implements AuthRepository {
       return left(ServerFailure(e.message));
     } on ServerException catch (e) {
       return left(ServerFailure(e.message));
-    } catch (e) {
-      return left(ServerFailure(e.toString()));
+    } on AuthException catch (e) {
+      return left(ServerFailure(e.message));
+    } catch (_) {
+      // Mostly network errors; the raw text means nothing to the user.
+      return left(
+        const ServerFailure(
+          'Could not reach the server. Check your connection.',
+        ),
+      );
     }
   }
 }

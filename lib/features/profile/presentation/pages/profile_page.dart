@@ -2,226 +2,380 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/utils/snackbar.dart';
-import '../../../my_trips/presentation/widgets/confirm_delete_trip.dart';
+import '../../../../core/constants/app_info.dart';
 import '../../../../core/router/app_router.dart';
+
 import '../../../../core/theme/theme_mode_provider.dart';
+import '../../../../core/utils/snackbar.dart';
+import '../../../auth/domain/entities/auth_user.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../home/domain/entities/trip.dart';
 import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
 import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
-import '../../../my_trips/presentation/widgets/my_trip_tile.dart';
-import '../../../auth/presentation/providers/auth_providers.dart';
-import '../providers/profile_providers.dart';
-import '../widgets/profile_stat.dart';
 
+/// The signed-in traveller and their settings. Trips live on My Trips.
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
-  void _soon(BuildContext context, String what) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text('$what coming soon')));
+  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Your trips stay saved to your account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (!(ok ?? false)) return;
+    final error = await ref.read(authControllerProvider.notifier).signOut();
+    if (context.mounted) showErrorSnack(context, error);
+  }
+
+  Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+    if (!await _confirmDelete(context) || !context.mounted) return;
+
+    // Blocks the screen: leaving halfway would be confusing.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 20),
+              Expanded(child: Text('Deleting your account…')),
+            ],
+          ),
+        ),
+      ),
+    );
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final error = await ref
+        .read(authControllerProvider.notifier)
+        .deleteAccount();
+    navigator.pop();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(error ?? 'Your account was deleted')),
+      );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final profile = ref.watch(profileProvider);
     final user = ref.watch(authUserProvider).valueOrNull;
-    final myTrips = ref.watch(myTripsProvider(MyTripsTab.mine));
-    final tripsNotifier = ref.read(myTripsProvider(MyTripsTab.mine).notifier);
+
+    Widget section(String title, List<Widget> tiles) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            children: [
+              for (final (i, tile) in tiles.indexed) ...[
+                if (i > 0) const Divider(height: 1),
+                tile,
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
 
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: profile.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const Center(child: Text('Could not load profile')),
-          data: (p) => ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              12,
-              16,
-              FloatingNavBar.reservedSpace(context) + 8,
-            ),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Profile',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () => _soon(context, 'Settings'),
-                    icon: const Icon(Icons.settings_outlined),
-                    style: IconButton.styleFrom(
-                      fixedSize: const Size(52, 52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Card(
-                margin: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 44,
-                        backgroundImage: NetworkImage(
-                          user?.avatarUrl ?? p.avatarUrl,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        user?.name ?? p.name,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        p.username,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        p.bio,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          ProfileStat(value: p.trips, label: 'Trips'),
-                          ProfileStat(value: p.followers, label: 'Followers'),
-                          ProfileStat(value: p.following, label: 'Following'),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => _soon(context, 'Edit profile'),
-                          child: const Text('Edit Profile'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'My Trips',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go(AppRouter.myTrips),
-                    child: const Text('See all'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ...myTrips.maybeWhen(
-                data: (items) => [
-                  for (final t in items.take(2)) ...[
-                    MyTripTile(
-                      trip: t,
-                      onTap: () => context.push(AppRouter.tripDetail(t.id)),
-                      onFavorite: () async {
-                        final error = await tripsNotifier.toggleFavorite(t.id);
-                        if (context.mounted) showErrorSnack(context, error);
-                      },
-                      removeLabel: 'Delete',
-                      onRemove: () async {
-                        if (!await confirmDeleteTrip(context, t.title)) return;
-                        final error = await tripsNotifier.remove(t.id);
-                        if (context.mounted) showErrorSnack(context, error);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                ],
-                orElse: () => const [],
-              ),
-              const SizedBox(height: 12),
-              Card(
-                margin: EdgeInsets.zero,
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Column(
-                  children: [
-                    const _ThemeTile(),
-                    const Divider(height: 1),
-                    _MenuTile(
-                      icon: Icons.help_outline,
-                      label: 'Help & Support',
-                      onTap: () => _soon(context, 'Help'),
-                    ),
-                    const Divider(height: 1),
-                    _MenuTile(
-                      icon: Icons.privacy_tip_outlined,
-                      label: 'Privacy',
-                      onTap: () => _soon(context, 'Privacy'),
-                    ),
-                    const Divider(height: 1),
-                    _MenuTile(
-                      icon: Icons.logout,
-                      label: 'Log out',
-                      color: scheme.error,
-                      onTap: () =>
-                          ref.read(authControllerProvider.notifier).signOut(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            FloatingNavBar.reservedSpace(context) + 8,
           ),
+          children: [
+            Text(
+              'Profile',
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (user != null) _Header(user: user),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => context.push(AppRouter.addTrip),
+              icon: const Icon(Icons.add_location_alt_outlined),
+              label: const Text('Add a trip'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            section('Settings', const [_ThemeTile()]),
+            const SizedBox(height: 24),
+            section('Support', [
+              _LinkTile(
+                icon: Icons.feedback_outlined,
+                label: 'Send feedback',
+                route: AppRouter.feedback,
+              ),
+              _LinkTile(
+                icon: Icons.info_outline,
+                label: 'About ${AppInfo.name}',
+                route: AppRouter.about,
+              ),
+            ]),
+            const SizedBox(height: 24),
+            section('Legal', [
+              _LinkTile(
+                icon: Icons.privacy_tip_outlined,
+                label: 'Privacy Policy',
+                route: AppRouter.privacy,
+              ),
+              _LinkTile(
+                icon: Icons.description_outlined,
+                label: 'Terms & Conditions',
+                route: AppRouter.terms,
+              ),
+            ]),
+            const SizedBox(height: 24),
+            section('Account', [
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: const Text('Log out'),
+                onTap: () => _signOut(context, ref),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_forever_outlined,
+                  color: scheme.error,
+                ),
+                title: Text(
+                  'Delete account',
+                  style: TextStyle(color: scheme.error),
+                ),
+                subtitle: const Text('Removes your trips, photos and activity'),
+                onTap: () => _deleteAccount(context, ref),
+              ),
+            ]),
+            const SizedBox(height: 24),
+            Center(
+              child: Text(
+                '${AppInfo.name} ${ref.watch(appVersionProvider).valueOrNull ?? ''}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _MenuTile extends StatelessWidget {
-  const _MenuTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.color,
-  });
+/// Asks the user to type DELETE, since nothing can be recovered afterwards.
+Future<bool> _confirmDelete(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    ) ??
+    false;
 
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? color;
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    leading: Icon(icon, color: color),
-    title: Text(label, style: TextStyle(color: color)),
-    trailing: const Icon(Icons.chevron_right),
-    onTap: onTap,
-  );
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  static const _word = 'DELETE';
+  final _typed = TextEditingController();
+
+  @override
+  void dispose() {
+    _typed.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ready = _typed.text.trim().toUpperCase() == _word;
+
+    return AlertDialog(
+      icon: Icon(Icons.warning_amber_rounded, color: scheme.error),
+      title: const Text('Delete your account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your trips, photos, likes and saves will be deleted for good. '
+            'This can\'t be undone.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _typed,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Type DELETE to confirm',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: scheme.error,
+            foregroundColor: scheme.onError,
+          ),
+          onPressed: ready ? () => Navigator.pop(context, true) : null,
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Avatar, name and email, with counts from the user's own trips (shared
+/// with the My Trips tab, so no extra request once either has loaded).
+class _Header extends ConsumerWidget {
+  const _Header({required this.user});
+
+  final AuthUser user;
+
+  static String _compact(int n) => n >= 1000
+      ? '${(n / 1000).toStringAsFixed(1).replaceAll('.0', '')}K'
+      : '$n';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final avatar = user.avatarUrl ?? '';
+    final trips = ref.watch(myTripsProvider(MyTripsTab.mine)).valueOrNull;
+    final likes = trips?.fold<int>(0, (sum, Trip t) => sum + t.likes);
+
+    Widget stat(String label, int? value) => Expanded(
+      child: Column(
+        children: [
+          Text(
+            value == null ? '–' : _compact(value),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: scheme.primaryContainer,
+                  backgroundImage: avatar.isEmpty ? null : NetworkImage(avatar),
+                  onBackgroundImageError: avatar.isEmpty ? null : (_, _) {},
+                  child: avatar.isEmpty
+                      ? Text(
+                          user.name.isEmpty ? '?' : user.name[0].toUpperCase(),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: scheme.onPrimaryContainer,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (user.email case final email?)
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(children: [stat('Trips', trips?.length), stat('Likes', likes)]),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ThemeTile extends ConsumerWidget {
@@ -265,4 +419,24 @@ class _ThemeTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _LinkTile extends StatelessWidget {
+  const _LinkTile({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
+
+  final IconData icon;
+  final String label;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: Icon(icon),
+    title: Text(label),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () => context.push(route),
+  );
 }

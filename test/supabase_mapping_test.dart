@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:navigito/features/add_trip/presentation/providers/trip_draft_provider.dart';
+import 'package:navigito/features/auth/domain/entities/auth_user.dart';
+import 'package:navigito/features/auth/presentation/providers/auth_providers.dart';
 import 'package:navigito/features/home/data/models/trip_card_model.dart';
 import 'package:navigito/features/home/domain/entities/place_photo.dart';
 import 'package:navigito/features/trip_detail/data/models/trip_detail_model.dart';
@@ -56,50 +58,58 @@ void main() {
     expect(d.stops[2].latitude, 10.0);
   });
 
-  test('a draft becomes the create_trip payload with every time filled', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final draft = container.read(tripDraftProvider.notifier)
-      ..addStop(
-        const DraftStop(
-          id: 'ChIJgoogle',
-          name: 'Fort Kochi',
-          subtitle: 'Kochi',
-          position: LatLng(9.96, 76.24),
-        ),
-      )
-      ..addStop(
-        const DraftStop(
-          id: 'geo:9.970000,76.250000',
-          name: '9.97000, 76.25000',
-          position: LatLng(9.97, 76.25),
-          type: StopType.food,
-        ),
-      );
-    // Up to three uploads per stop.
-    for (final n in [1, 2, 3, 4]) {
-      expect(draft.addPhoto('ChIJgoogle', 'https://x/$n.jpg'), n <= 3);
-    }
-    draft.removePhoto('ChIJgoogle', 'https://x/2.jpg');
-    final first = container.read(tripDraftProvider).stops.first;
-    draft
-      ..updateStop(
-        first.copyWith(time: () => const TimeOfDay(hour: 7, minute: 5)),
-      )
-      ..setDetails(description: '  Weekend  ', categories: {'Nature'});
+  test(
+    'a draft becomes the create_trip payload with every time filled',
+    () async {
+      final container = _container();
+      addTearDown(container.dispose);
+      container.listen(tripDraftProvider, (_, _) {});
+      await container.read(authUserProvider.future);
+      final draft = container.read(tripDraftProvider.notifier)
+        ..addStop(
+          const DraftStop(
+            id: 'ChIJgoogle',
+            name: 'Fort Kochi',
+            subtitle: 'Kochi',
+            position: LatLng(9.96, 76.24),
+          ),
+        )
+        ..addStop(
+          const DraftStop(
+            id: 'geo:9.970000,76.250000',
+            name: '9.97000, 76.25000',
+            position: LatLng(9.97, 76.25),
+            type: StopType.food,
+          ),
+        );
+      // Up to three uploads per stop.
+      for (final n in [1, 2, 3, 4]) {
+        expect(draft.addPhoto('ChIJgoogle', 'https://x/$n.jpg'), n <= 3);
+      }
+      draft.removePhoto('ChIJgoogle', 'https://x/2.jpg');
+      final first = container.read(tripDraftProvider).stops.first;
+      draft
+        ..updateStop(
+          first.copyWith(time: () => const TimeOfDay(hour: 7, minute: 5)),
+        )
+        ..setDetails(description: '  Weekend  ', categories: {'Nature'});
 
-    final trip = container.read(tripDraftProvider).toNewTrip('  Kochi trip ');
-    expect(trip.stops.first.photoUrls, ['https://x/1.jpg', 'https://x/3.jpg']);
-    expect(trip.stops.last.photoUrls, isEmpty);
-    expect(trip.title, 'Kochi trip');
-    expect(trip.description, 'Weekend');
-    expect(trip.tags, ['Nature']);
-    expect([for (final s in trip.stops) s.time], ['07:05', '09:05']);
-    expect(trip.stops.first.placeId, 'ChIJgoogle');
-    // Dropped pins aren't Google places.
-    expect(trip.stops.last.placeId, isNull);
-    expect(trip.stops.last.type, StopType.food);
-  });
+      final trip = container.read(tripDraftProvider).toNewTrip('  Kochi trip ');
+      expect(trip.stops.first.photoUrls, [
+        'https://x/1.jpg',
+        'https://x/3.jpg',
+      ]);
+      expect(trip.stops.last.photoUrls, isEmpty);
+      expect(trip.title, 'Kochi trip');
+      expect(trip.description, 'Weekend');
+      expect(trip.tags, ['Nature']);
+      expect([for (final s in trip.stops) s.time], ['07:05', '09:05']);
+      expect(trip.stops.first.placeId, 'ChIJgoogle');
+      // Dropped pins aren't Google places.
+      expect(trip.stops.last.placeId, isNull);
+      expect(trip.stops.last.type, StopType.food);
+    },
+  );
 
   test('Google photos load live by size; uploads are used as they are', () {
     const google = PlacePhoto.google('places/abc/photos/xyz', author: 'Asha');
@@ -115,3 +125,12 @@ void main() {
     expect(own.isGoogle, isFalse);
   });
 }
+
+/// Signed in as one user, without the real auth backend.
+ProviderContainer _container() => ProviderContainer(
+  overrides: [
+    authUserProvider.overrideWith(
+      (ref) => Stream.value(const AuthUser(id: 'u1', name: 'Arjun')),
+    ),
+  ],
+);

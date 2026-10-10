@@ -1,3 +1,4 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,15 +13,17 @@ class App extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return MaterialApp.router(
-      title: AppConstants.appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ref.watch(themeModeProvider),
-      routerConfig: AppRouter.router,
-      builder: (context, child) =>
-          SplashOverlay(child: child ?? const SizedBox()),
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) => MaterialApp.router(
+        title: AppConstants.appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(lightDynamic?.harmonized()),
+        darkTheme: AppTheme.dark(darkDynamic?.harmonized()),
+        themeMode: ref.watch(themeModeProvider),
+        routerConfig: AppRouter.router,
+        builder: (context, child) =>
+            SplashOverlay(child: child ?? const SizedBox()),
+      ),
     );
   }
 }

@@ -3,6 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/widgets/auth_gate.dart';
 import '../../features/home/presentation/pages/home_page.dart';
+import '../../features/info/presentation/content/legal_content.dart';
+import '../../features/info/presentation/pages/about_page.dart';
+import '../../features/info/presentation/pages/feedback_page.dart';
+import '../../features/info/presentation/pages/legal_page.dart';
 import '../../features/main_shell/presentation/pages/main_shell_page.dart';
 import '../../features/my_trips/presentation/pages/my_trips_page.dart';
 import '../../features/add_trip/presentation/pages/add_trip_details_page.dart';
@@ -20,6 +24,10 @@ abstract final class AppRouter {
   static const addTripDetails = '/add-trip/details';
   static const notifications = '/notifications';
   static const profile = '/profile';
+  static const privacy = '/privacy';
+  static const terms = '/terms';
+  static const about = '/about';
+  static const feedback = '/feedback';
   static String tripDetail(String id) => '/trip/$id';
 
   static final router = GoRouter(
@@ -122,6 +130,20 @@ abstract final class AppRouter {
             builder: (context, state) => const AddTripDetailsPage(),
           ),
         ],
+      ),
+      // Info screens, full-screen over the tabs.
+      GoRoute(
+        path: privacy,
+        builder: (context, state) => LegalPage(doc: privacyPolicy),
+      ),
+      GoRoute(
+        path: terms,
+        builder: (context, state) => LegalPage(doc: termsAndConditions),
+      ),
+      GoRoute(path: about, builder: (context, state) => const AboutPage()),
+      GoRoute(
+        path: feedback,
+        builder: (context, state) => const FeedbackPage(),
       ),
       // Outside the shell so the detail screen is full-screen (no navbar).
       GoRoute(

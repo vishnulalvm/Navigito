@@ -23,3 +23,10 @@ class SignOut {
 
   Future<Either<Failure, Unit>> call() => _repository.signOut();
 }
+
+class DeleteAccount {
+  const DeleteAccount(this._repository);
+  final AuthRepository _repository;
+
+  Future<Either<Failure, Unit>> call() => _repository.deleteAccount();
+}

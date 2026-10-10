@@ -7,6 +7,9 @@ import '../../features/add_trip/data/datasources/add_trip_remote_datasource.dart
 import '../../features/add_trip/data/repositories/add_trip_repository_impl.dart';
 import '../../features/add_trip/domain/repositories/add_trip_repository.dart';
 import '../../features/home/data/datasources/home_mock_datasource.dart';
+import '../../features/info/data/datasources/feedback_remote_datasource.dart';
+import '../../features/info/data/repositories/feedback_repository_impl.dart';
+import '../../features/info/domain/repositories/feedback_repository.dart';
 import '../../features/home/data/datasources/maps_link_remote_datasource.dart';
 import '../../features/home/data/datasources/places_remote_datasource.dart';
 import '../../features/home/data/datasources/recent_places_local_datasource.dart';
@@ -23,9 +26,6 @@ import '../../features/my_trips/domain/repositories/my_trips_repository.dart';
 import '../../features/notifications/data/datasources/notifications_mock_datasource.dart';
 import '../../features/notifications/data/repositories/notifications_repository_impl.dart';
 import '../../features/notifications/domain/repositories/notifications_repository.dart';
-import '../../features/profile/data/datasources/profile_mock_datasource.dart';
-import '../../features/profile/data/repositories/profile_repository_impl.dart';
-import '../../features/profile/domain/repositories/profile_repository.dart';
 import '../../features/trip_detail/data/datasources/routes_remote_datasource.dart';
 import '../../features/trip_detail/data/repositories/route_repository_impl.dart';
 import '../../features/trip_detail/domain/repositories/route_repository.dart';
@@ -78,10 +78,10 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<AddTripRepository>(
       () => AddTripRepositoryImpl(AddTripRemoteDatasource()),
     )
+    ..registerLazySingleton<FeedbackRepository>(
+      () => FeedbackRepositoryImpl(FeedbackRemoteDatasource()),
+    )
     ..registerLazySingleton<NotificationsRepository>(
       () => NotificationsRepositoryImpl(NotificationsMockDatasource()),
-    )
-    ..registerLazySingleton<ProfileRepository>(
-      () => ProfileRepositoryImpl(ProfileMockDatasource()),
     );
 }

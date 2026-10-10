@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../home/presentation/providers/home_providers.dart';
 import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
@@ -19,6 +20,8 @@ import '../widgets/route_map_helpers.dart';
 class TripDetailNotifier extends FamilyAsyncNotifier<TripDetail, String> {
   @override
   Future<TripDetail> build(String arg) async {
+    // Liked/saved/following are per user: reload on sign in, out or switch.
+    ref.watch(authUserProvider.select((u) => u.valueOrNull?.id));
     final result = await GetTripDetail(sl<TripDetailRepository>())(arg);
     return result.fold((f) => throw Exception(f.message), (d) => d);
   }
