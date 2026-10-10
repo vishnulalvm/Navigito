@@ -31,6 +31,7 @@ class NewStop {
     required this.longitude,
     this.subtitle = '',
     this.placeId,
+    this.photoUrls = const [],
   });
 
   final int day;
@@ -45,4 +46,7 @@ class NewStop {
 
   /// Google place id, when the stop came from Google.
   final String? placeId;
+
+  /// Up to 3 photos the user uploaded.
+  final List<String> photoUrls;
 }

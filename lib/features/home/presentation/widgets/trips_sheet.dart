@@ -77,17 +77,31 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
       controller: widget.controller,
       header: _HeaderRow(
         place: place,
-        filter: filter,
         onClearPlace: () =>
             ref.read(searchedPlaceProvider.notifier).state = null,
-        onFilter: (f) => ref.read(tripFilterProvider.notifier).state = f,
       ),
       slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: _FilterChips(
+              selected: filter,
+              onSelected: (f) =>
+                  ref.read(tripFilterProvider.notifier).state = f,
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: _ShareTripCard(onTap: _addTrip),
+          ),
+        ),
         trips.when(
           data: (items) => items.isEmpty
               ? const SliverToBoxAdapter(child: _EmptyState())
               : SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, widget.bottomInset),
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, widget.bottomInset),
                   sliver: SliverList.separated(
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -99,7 +113,7 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
                   ),
                 ),
           loading: () => SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             sliver: SliverList.separated(
               itemCount: 2,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -119,6 +133,15 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
         ),
       ],
     );
+  }
+
+  Future<void> _addTrip() async {
+    final ok = await ensureSignedIn(
+      context,
+      ref,
+      reason: 'Sign in to share your trip',
+    );
+    if (ok && mounted) context.push(AppRouter.addTrip);
   }
 
   Widget _buildCard(Trip trip) => TripCard(
@@ -142,17 +165,10 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
 }
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({
-    required this.place,
-    required this.filter,
-    required this.onClearPlace,
-    required this.onFilter,
-  });
+  const _HeaderRow({required this.place, required this.onClearPlace});
 
   final String? place;
-  final TripFilter filter;
   final VoidCallback onClearPlace;
-  final ValueChanged<TripFilter> onFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +220,6 @@ class _HeaderRow extends StatelessWidget {
                     icon: const Icon(Icons.close),
                   ),
           ),
-          _FilterDropdown(selected: filter, onSelected: onFilter),
         ],
       ),
     );
@@ -292,55 +307,104 @@ class _Message extends StatelessWidget {
   }
 }
 
-class _FilterDropdown extends StatelessWidget {
-  const _FilterDropdown({required this.selected, required this.onSelected});
+class _FilterChips extends StatelessWidget {
+  const _FilterChips({required this.selected, required this.onSelected});
 
   final TripFilter selected;
   final ValueChanged<TripFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: TripFilter.values.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final f = TripFilter.values[i];
+          return ChoiceChip(
+            label: Text(f.label),
+            selected: f == selected,
+            showCheckmark: false,
+            onSelected: (_) => onSelected(f),
+          );
+        },
+      ),
+    );
+  }
+}
 
-    return PopupMenuButton<TripFilter>(
-      initialValue: selected,
-      onSelected: onSelected,
-      position: PopupMenuPosition.under,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      itemBuilder: (_) => [
-        for (final f in TripFilter.values)
-          PopupMenuItem(
-            value: f,
+/// Slim, wide promo card inviting users to share a memorable place.
+class _ShareTripCard extends StatelessWidget {
+  const _ShareTripCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: [scheme.primary, scheme.tertiary],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Expanded(child: Text(f.label)),
-                if (f == selected)
-                  Icon(Icons.check, size: 18, color: scheme.primary),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: scheme.onPrimary.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.place_rounded, color: scheme.onPrimary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Share your memorable place',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: scheme.onPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Tap to add a trip and inspire others',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onPrimary.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.add_circle, color: scheme.onPrimary, size: 28),
               ],
             ),
-          ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                selected.label,
-                style: TextStyle(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Icon(Icons.arrow_drop_down, color: scheme.primary),
-            ],
           ),
         ),
       ),

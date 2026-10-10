@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'place_photos.dart';
 import '../../domain/entities/trip.dart';
 
 class TripCard extends StatefulWidget {
@@ -62,20 +63,11 @@ class _TripCardState extends State<TripCard> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ColoredBox(color: scheme.surfaceContainerHighest),
-                    Image.network(
-                      trip.coverUrl,
-                      fit: BoxFit.cover,
-                      // Fades in over the placeholder instead of popping.
-                      frameBuilder: (_, child, frame, sync) => sync
-                          ? child
-                          : AnimatedOpacity(
-                              opacity: frame == null ? 0 : 1,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                              child: child,
-                            ),
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    // Uploaded cover, or a live Google photo of the first
+                    // stop; only loaded once the card is built on screen.
+                    TripCoverImage(
+                      coverUrl: trip.coverUrl,
+                      coverPlaceId: trip.coverPlaceId,
                     ),
                     Positioned(
                       top: 10,

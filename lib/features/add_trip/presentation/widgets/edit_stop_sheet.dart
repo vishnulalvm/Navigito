@@ -5,11 +5,13 @@ import '../../../trip_detail/domain/entities/trip_stop.dart';
 import '../../../trip_detail/presentation/widgets/stop_style.dart';
 import '../providers/trip_draft_provider.dart';
 import 'stop_badge.dart';
+import 'stop_photo_picker.dart';
 
 Future<void> showEditStopSheet(BuildContext context, String stopId) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
     builder: (_) => _EditStopSheet(stopId: stopId),
   );
 }
@@ -52,7 +54,7 @@ class _EditStopSheet extends ConsumerWidget {
     final notifier = ref.read(tripDraftProvider.notifier);
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -137,7 +139,9 @@ class _EditStopSheet extends ConsumerWidget {
                 }
               },
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
+            StopPhotoPicker(stop: stop),
+            const SizedBox(height: 12),
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: scheme.error),
               onPressed: () {

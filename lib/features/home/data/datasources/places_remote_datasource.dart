@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../../../../core/constants/env.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../domain/entities/place_info.dart';
+import '../../domain/entities/place_photo.dart';
 import '../../domain/entities/place_suggestion.dart';
 
 /// Google Places API (New): autocomplete + place location.
@@ -26,6 +27,7 @@ class PlacesRemoteDatasource {
   final _suggestionCache = <String, List<PlaceSuggestion>>{};
   final _locationCache = <String, (double, double)>{};
   final _infoCache = <String, PlaceInfo>{};
+  final _photoCache = <String, List<PlacePhoto>>{};
 
   Future<List<PlaceSuggestion>> autocomplete(
     String query, {
@@ -102,6 +104,39 @@ class PlacesRemoteDatasource {
       distanceMeters: p['distanceMeters'] as int?,
       types: [...?(p['types'] as List?)?.cast<String>()],
     );
+  }
+
+  /// Up to [max] photos of a place. Only the `photos` field is asked for,
+  /// which bills as Place Details Essentials IDs Only: free and unlimited.
+  /// Kept for the session only; Google forbids storing photo names.
+  Future<List<PlacePhoto>> photos(String placeId, {int max = 3}) async {
+    final cached = _photoCache[placeId];
+    if (cached != null) return cached;
+    if (Env.placesApiKey.isEmpty) return const [];
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '$_base/places/$placeId',
+        options: Options(
+          headers: {
+            'X-Goog-Api-Key': Env.placesApiKey,
+            'X-Goog-FieldMask': 'photos',
+          },
+        ),
+      );
+      final photos = (res.data?['photos'] as List?) ?? const [];
+      return _photoCache[placeId] = [
+        for (final p in photos.take(max).cast<Map<String, dynamic>>())
+          PlacePhoto.google(
+            p['name'] as String,
+            author:
+                ((p['authorAttributions'] as List?)?.firstOrNull
+                        as Map<String, dynamic>?)?['displayName']
+                    as String?,
+          ),
+      ];
+    } on DioException catch (e) {
+      throw ServerException(e.message ?? 'Places request failed');
+    }
   }
 
   /// Name, position and kind of a place tapped on the map. `displayName`

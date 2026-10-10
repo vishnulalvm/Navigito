@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../home/presentation/widgets/place_photos.dart';
 import '../../../../core/utils/snackbar.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
@@ -171,7 +172,6 @@ class _FullHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     Widget stat(IconData icon, String text) => Expanded(
       child: Row(
@@ -193,11 +193,13 @@ class _FullHeader extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(
-                trip.coverUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    ColoredBox(color: scheme.surfaceContainerHighest),
+              TripCoverImage(
+                coverUrl: trip.coverUrl,
+                coverPlaceId: trip.stops
+                    .where((s) => s.placeId != null)
+                    .firstOrNull
+                    ?.placeId,
+                widthPx: 1200,
               ),
               const DecoratedBox(
                 decoration: BoxDecoration(

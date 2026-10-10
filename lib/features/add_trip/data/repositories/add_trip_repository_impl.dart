@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:fpdart/fpdart.dart';
 
 import '../../../../core/error/exceptions.dart';
@@ -11,9 +13,24 @@ class AddTripRepositoryImpl implements AddTripRepository {
   final AddTripRemoteDatasource _remote;
 
   @override
-  Future<Either<Failure, String>> createTrip(NewTrip trip) async {
+  Future<Either<Failure, String>> createTrip(NewTrip trip) =>
+      _guard(() => _remote.create(trip));
+
+  @override
+  Future<Either<Failure, String>> uploadStopPhoto(
+    Uint8List bytes, {
+    String contentType = 'image/jpeg',
+  }) => _guard(() => _remote.uploadPhoto(bytes, contentType: contentType));
+
+  @override
+  Future<Either<Failure, Unit>> deleteStopPhoto(String url) => _guard(() async {
+    await _remote.deletePhoto(url);
+    return unit;
+  });
+
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() run) async {
     try {
-      return right(await _remote.create(trip));
+      return right(await run());
     } on ServerException catch (e) {
       return left(ServerFailure(e.message));
     } catch (_) {

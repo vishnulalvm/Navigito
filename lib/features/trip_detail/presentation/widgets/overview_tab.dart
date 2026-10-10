@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../home/presentation/widgets/place_photos.dart';
 import '../../../../core/utils/snackbar.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
@@ -17,11 +18,11 @@ class OverviewTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final notifier = ref.read(tripDetailProvider(trip.id).notifier);
+    // One thumbnail per stop that has a photo (uploaded or live Google).
     final photos = [
       for (final s in trip.stops)
-        if (s.photoUrl.isNotEmpty) s.photoUrl,
+        ?stopPhotos(ref, uploaded: s.photoUrls, placeId: s.placeId).firstOrNull,
     ];
     final shown = photos.take(4).toList();
     final extra = photos.length - shown.length;
@@ -60,12 +61,12 @@ class OverviewTab extends ConsumerWidget {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            Image.network(
-                              shown[i],
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => ColoredBox(
-                                color: scheme.surfaceContainerHighest,
-                              ),
+                            // Thumbnails may skip the credit; the Photos tab
+                            // shows it.
+                            PlacePhotoImage(
+                              photo: shown[i],
+                              widthPx: 300,
+                              credit: false,
                             ),
                             if (i == shown.length - 1 && extra > 0)
                               ColoredBox(

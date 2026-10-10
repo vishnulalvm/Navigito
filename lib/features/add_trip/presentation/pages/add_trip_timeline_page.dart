@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../home/presentation/widgets/place_photos.dart';
 import '../../../trip_detail/presentation/widgets/stop_style.dart';
+import '../providers/photo_uploads_provider.dart';
 import '../providers/trip_draft_provider.dart';
 import '../widgets/add_trip_bottom_action.dart';
 import '../widgets/edit_stop_sheet.dart';
@@ -35,6 +37,7 @@ class AddTripTimelinePage extends ConsumerWidget {
       body: Column(
         children: [
           _DaysStepper(days: draft.days),
+          _MissingPhotosHint(stops: draft.stops),
           Expanded(
             child: ReorderableListView.builder(
               padding: const EdgeInsets.only(bottom: 24),
@@ -343,6 +346,7 @@ class _TimelineStop extends StatelessWidget {
                     ),
                   ),
                 ),
+                _PhotoSlot(stop: stop),
                 ReorderableDragStartListener(
                   index: listIndex,
                   child: Padding(
@@ -358,6 +362,126 @@ class _TimelineStop extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The stop's first photo, or a slot asking for one; opens the stop sheet.
+class _PhotoSlot extends ConsumerWidget {
+  const _PhotoSlot({required this.stop});
+
+  final DraftStop stop;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final photo = stopPhotos(
+      ref,
+      uploaded: stop.photoUrls,
+      placeId: stop.placeId,
+    ).firstOrNull;
+    final uploading =
+        ref.watch(photoUploadsProvider)[stop.id]?.isNotEmpty ?? false;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => showEditStopSheet(context, stop.id),
+        child: SizedBox.square(
+          dimension: 44,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: uploading
+                ? ColoredBox(
+                    color: scheme.surfaceContainerHigh,
+                    child: const Padding(
+                      padding: EdgeInsets.all(13),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : photo != null
+                ? PlacePhotoImage(photo: photo, widthPx: 160, credit: false)
+                : ColoredBox(
+                    color: scheme.surfaceContainerHigh,
+                    child: Icon(
+                      Icons.add_a_photo_outlined,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks for photos where neither the user nor Google has any.
+class _MissingPhotosHint extends ConsumerWidget {
+  const _MissingPhotosHint({required this.stops});
+
+  final List<DraftStop> stops;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final uploading = ref.watch(photoUploadsProvider);
+    final missing = [
+      for (final s in stops)
+        if ((uploading[s.id]?.isEmpty ?? true) &&
+            // Still asking Google: not known to be missing yet.
+            !(s.placeId != null &&
+                ref.watch(placePhotosProvider(s.placeId!)).isLoading) &&
+            stopPhotos(ref, uploaded: s.photoUrls, placeId: s.placeId).isEmpty)
+          s,
+    ];
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      child: missing.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Material(
+                color: scheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => showEditStopSheet(context, missing.first.id),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.add_a_photo_outlined,
+                          color: scheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            missing.length == 1
+                                ? '${missing.first.name} has no photos. '
+                                      'Add one so travellers can see it.'
+                                : '${missing.length} stops have no photos. '
+                                      'Add some so travellers can see them.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSecondaryContainer,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right,
+                          color: scheme.onSecondaryContainer,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

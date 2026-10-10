@@ -3,6 +3,7 @@ import 'package:fpdart/fpdart.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/map_place.dart';
 import '../entities/place_info.dart';
+import '../entities/place_photo.dart';
 import '../entities/place_suggestion.dart';
 import '../entities/recent_place.dart';
 import '../entities/trip.dart';
@@ -38,6 +39,10 @@ abstract interface class HomeRepository {
 
   /// Name, position and kind of a place, e.g. one tapped on the map.
   Future<Either<Failure, PlaceInfo>> getPlaceInfo(String placeId);
+
+  /// Up to 3 live Google photos of a place (free to list; each image load is
+  /// billed by Google).
+  Future<Either<Failure, List<PlacePhoto>>> getPlacePhotos(String placeId);
 
   /// Expands a Google Maps short link to the full URL it points to.
   Future<Either<Failure, String>> resolveMapsLink(String url);

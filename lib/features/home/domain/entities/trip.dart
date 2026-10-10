@@ -13,11 +13,18 @@ class Trip extends Equatable {
     this.distanceKm = 0,
     this.places = const [],
     this.isFavorite = false,
+    this.coverPlaceId,
   });
 
   final String id;
   final String title;
+
+  /// Uploaded cover; empty when the trip has none.
   final String coverUrl;
+
+  /// Google place of its first stop, for a live cover when [coverUrl] is
+  /// empty.
+  final String? coverPlaceId;
   final int days;
   final int stops;
   final String authorName;
@@ -41,6 +48,7 @@ class Trip extends Equatable {
     distanceKm: distanceKm,
     places: places,
     isFavorite: isFavorite ?? this.isFavorite,
+    coverPlaceId: coverPlaceId,
   );
 
   @override

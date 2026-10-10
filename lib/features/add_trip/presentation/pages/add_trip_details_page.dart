@@ -10,6 +10,7 @@ import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
 import '../../domain/repositories/add_trip_repository.dart';
 import '../../domain/usecases/create_trip.dart';
+import '../providers/photo_uploads_provider.dart';
 import '../providers/trip_draft_provider.dart';
 import '../widgets/add_trip_bottom_action.dart';
 import '../widgets/step_progress.dart';
@@ -56,7 +57,11 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
   /// Publishes the trip with all its stops in one request. On failure the
   /// draft stays, so nothing is lost and Create can be tapped again.
   Future<void> _create() async {
-    if (_creating || !_formKey.currentState!.validate()) return;
+    if (_creating ||
+        ref.read(photoUploadsProvider.notifier).busy ||
+        !_formKey.currentState!.validate()) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() => _creating = true);
 
@@ -182,11 +187,25 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
           ],
         ),
       ),
-      bottomNavigationBar: AddTripBottomAction(
-        label: _creating ? 'Publishing…' : 'Create trip',
-        icon: Icons.check,
-        loading: _creating,
-        onPressed: _create,
+      bottomNavigationBar: Consumer(
+        builder: (context, ref, _) {
+          // Photos picked a moment ago must land before the trip is sent.
+          final uploading = ref.watch(
+            photoUploadsProvider.select(
+              (p) => p.values.any((l) => l.isNotEmpty),
+            ),
+          );
+          return AddTripBottomAction(
+            label: _creating
+                ? 'Publishing…'
+                : uploading
+                ? 'Uploading photos…'
+                : 'Create trip',
+            icon: Icons.check,
+            loading: _creating || uploading,
+            onPressed: _create,
+          );
+        },
       ),
     );
   }

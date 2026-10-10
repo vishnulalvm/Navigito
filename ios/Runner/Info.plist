@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>GMSApiKey</key>
 	<string>$(MAPS_API_KEY)</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Add photos of the places in your trips.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos of the places in your trips.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Navigito uses your location to show nearby trips and places on the map.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

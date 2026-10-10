@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+
+import '../../../home/presentation/widgets/place_photos.dart';
 
 import '../../domain/entities/trip_detail.dart';
 import '../../domain/entities/trip_stop.dart';
@@ -117,23 +120,7 @@ class StopsTab extends StatelessWidget {
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 16, bottom: 16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      s.photoUrl,
-                      width: 76,
-                      height: 76,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        width: 76,
-                        height: 76,
-                        color: scheme.surfaceContainerHighest,
-                      ),
-                    ),
-                  ),
-                ),
+                _StopThumb(stop: s),
               ],
             ),
           ),
@@ -141,5 +128,33 @@ class StopsTab extends StatelessWidget {
       }
     }
     return ListView(children: [...children, const SizedBox(height: 24)]);
+  }
+}
+
+/// The stop's first photo, uploaded or live from Google; nothing if none.
+class _StopThumb extends ConsumerWidget {
+  const _StopThumb({required this.stop});
+
+  final TripStop stop;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final photo = stopPhotos(
+      ref,
+      uploaded: stop.photoUrls,
+      placeId: stop.placeId,
+    ).firstOrNull;
+    if (photo == null) return const SizedBox(width: 16);
+    return Padding(
+      padding: const EdgeInsets.only(right: 16, bottom: 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox.square(
+          dimension: 76,
+          // A thumbnail may skip the credit; the Photos tab shows it.
+          child: PlacePhotoImage(photo: photo, widthPx: 240, credit: false),
+        ),
+      ),
+    );
   }
 }

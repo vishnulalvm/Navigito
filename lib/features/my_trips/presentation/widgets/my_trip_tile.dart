@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../home/presentation/widgets/place_photos.dart';
 import '../../../home/domain/entities/trip.dart';
 
 enum _TripMenu { share, remove }
@@ -41,11 +42,12 @@ class MyTripTile extends StatelessWidget {
               SizedBox(
                 width: 132,
                 height: double.infinity,
-                child: Image.network(
-                  trip.coverUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      ColoredBox(color: scheme.surfaceContainerHighest),
+                child: TripCoverImage(
+                  coverUrl: trip.coverUrl,
+                  coverPlaceId: trip.coverPlaceId,
+                  widthPx: 400,
+                  // A thumbnail may skip the credit.
+                  credit: false,
                 ),
               ),
               Expanded(

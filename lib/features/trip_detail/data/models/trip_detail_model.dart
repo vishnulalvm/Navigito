@@ -37,7 +37,8 @@ TripStop _stop(Map<String, dynamic> s) => TripStop(
   type: StopType.values.asNameMap()[s['type']] ?? StopType.attraction,
   latitude: (s['latitude'] as num).toDouble(),
   longitude: (s['longitude'] as num).toDouble(),
-  photoUrl: s['photo_url'] as String? ?? '',
+  photoUrls: [...?(s['photo_urls'] as List?)?.cast<String>()],
+  placeId: s['place_id'] as String?,
   travelMinutes: s['travel_minutes'] as int?,
   distanceKm: s['distance_km'] as int?,
 );

@@ -11,7 +11,8 @@ class TripStop extends Equatable {
     required this.type,
     required this.latitude,
     required this.longitude,
-    required this.photoUrl,
+    this.photoUrls = const [],
+    this.placeId,
     this.subtitle,
     this.travelMinutes,
     this.distanceKm,
@@ -27,7 +28,12 @@ class TripStop extends Equatable {
   final StopType type;
   final double latitude;
   final double longitude;
-  final String photoUrl;
+
+  /// Up to 3 photos the author uploaded.
+  final List<String> photoUrls;
+
+  /// Google place, for live photos when there are no uploads.
+  final String? placeId;
 
   /// Travel from the previous stop.
   final int? travelMinutes;

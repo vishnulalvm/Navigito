@@ -15,6 +15,7 @@ class DraftStop {
     this.type = StopType.attraction,
     this.day = 1,
     this.time,
+    this.photoUrls = const [],
   });
 
   /// Place id, so the same place can't be added twice.
@@ -28,16 +29,30 @@ class DraftStop {
   /// Set by the user; null means it follows on from the stop before.
   final TimeOfDay? time;
 
-  DraftStop copyWith({StopType? type, int? day, TimeOfDay? Function()? time}) =>
-      DraftStop(
-        id: id,
-        name: name,
-        subtitle: subtitle,
-        position: position,
-        type: type ?? this.type,
-        day: day ?? this.day,
-        time: time != null ? time() : this.time,
-      );
+  /// Up to [maxPhotos] the user uploaded; they replace Google's photos.
+  final List<String> photoUrls;
+
+  static const maxPhotos = 3;
+
+  /// Google place behind the stop; dropped pins and pasted coordinates have
+  /// none.
+  String? get placeId => id.startsWith('geo:') ? null : id;
+
+  DraftStop copyWith({
+    StopType? type,
+    int? day,
+    TimeOfDay? Function()? time,
+    List<String>? photoUrls,
+  }) => DraftStop(
+    id: id,
+    name: name,
+    subtitle: subtitle,
+    position: position,
+    type: type ?? this.type,
+    day: day ?? this.day,
+    time: time != null ? time() : this.time,
+    photoUrls: photoUrls ?? this.photoUrls,
+  );
 }
 
 /// Guesses a stop's kind from its Google place types; edited in the timeline.
@@ -154,8 +169,8 @@ class TripDraft {
             type: s.type,
             latitude: s.position.latitude,
             longitude: s.position.longitude,
-            // Dropped pins and pasted coordinates have no Google place.
-            placeId: s.id.startsWith('geo:') ? null : s.id,
+            placeId: s.placeId,
+            photoUrls: s.photoUrls,
           ),
       ],
     );
@@ -267,6 +282,23 @@ class TripDraftNotifier extends Notifier<TripDraft> {
       categories: categories,
       isPublic: isPublic,
     );
+  }
+
+  /// Adds an uploaded photo to a stop; false if the stop already has the
+  /// most it can, or was removed meanwhile.
+  bool addPhoto(String stopId, String url) {
+    final stop = state.stops.where((s) => s.id == stopId).firstOrNull;
+    if (stop == null || stop.photoUrls.length >= DraftStop.maxPhotos) {
+      return false;
+    }
+    updateStop(stop.copyWith(photoUrls: [...stop.photoUrls, url]));
+    return true;
+  }
+
+  void removePhoto(String stopId, String url) {
+    final stop = state.stops.where((s) => s.id == stopId).firstOrNull;
+    if (stop == null) return;
+    updateStop(stop.copyWith(photoUrls: [...stop.photoUrls]..remove(url)));
   }
 
   void reset() => state = const TripDraft();

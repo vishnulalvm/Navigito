@@ -4,6 +4,7 @@ import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/map_place.dart';
 import '../../domain/entities/place_info.dart';
+import '../../domain/entities/place_photo.dart';
 import '../../domain/entities/place_suggestion.dart';
 import '../../domain/entities/recent_place.dart';
 import '../../domain/entities/trip.dart';
@@ -80,6 +81,10 @@ class HomeRepositoryImpl implements HomeRepository {
   @override
   Future<Either<Failure, PlaceInfo>> getPlaceInfo(String placeId) =>
       _guard(() => _places.info(placeId));
+
+  @override
+  Future<Either<Failure, List<PlacePhoto>>> getPlacePhotos(String placeId) =>
+      _guard(() => _places.photos(placeId));
 
   @override
   Future<Either<Failure, String>> resolveMapsLink(String url) =>
