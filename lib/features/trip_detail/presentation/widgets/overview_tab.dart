@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/utils/snackbar.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
@@ -18,7 +19,10 @@ class OverviewTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final notifier = ref.read(tripDetailProvider(trip.id).notifier);
-    final photos = trip.stops.map((s) => s.photoUrl).toList();
+    final photos = [
+      for (final s in trip.stops)
+        if (s.photoUrl.isNotEmpty) s.photoUrl,
+    ];
     final shown = photos.take(4).toList();
     final extra = photos.length - shown.length;
 
@@ -42,44 +46,44 @@ class OverviewTab extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 96,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: shown.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) => ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 96,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.network(
-                            shown[i],
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => ColoredBox(
-                              color: scheme.surfaceContainerHighest,
+              if (shown.isNotEmpty)
+                SizedBox(
+                  height: 96,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: shown.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) => ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 96,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              shown[i],
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => ColoredBox(
+                                color: scheme.surfaceContainerHighest,
+                              ),
                             ),
-                          ),
-                          if (i == shown.length - 1 && extra > 0)
-                            ColoredBox(
-                              color: Colors.black54,
-                              child: Center(
-                                child: Text(
-                                  '+$extra',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: Colors.white,
+                            if (i == shown.length - 1 && extra > 0)
+                              ColoredBox(
+                                color: Colors.black54,
+                                child: Center(
+                                  child: Text(
+                                    '+$extra',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(color: Colors.white),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -96,7 +100,8 @@ class OverviewTab extends ConsumerWidget {
                       ref,
                       reason: 'Sign in to like trips',
                     )) {
-                      notifier.toggleLike();
+                      final error = await notifier.toggleLike();
+                      if (context.mounted) showErrorSnack(context, error);
                     }
                   },
                   child: Row(
@@ -107,9 +112,7 @@ class OverviewTab extends ConsumerWidget {
                         size: 30,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        '${_compact(trip.likes + (trip.isLiked ? 0 : -1))} likes',
-                      ),
+                      Text('${_compact(trip.likes)} likes'),
                     ],
                   ),
                 ),
@@ -125,7 +128,8 @@ class OverviewTab extends ConsumerWidget {
                       ref,
                       reason: 'Sign in to save trips',
                     )) {
-                      notifier.toggleSave();
+                      final error = await notifier.toggleSave();
+                      if (context.mounted) showErrorSnack(context, error);
                     }
                   },
                   icon: Icon(

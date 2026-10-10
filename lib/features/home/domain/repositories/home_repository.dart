@@ -2,12 +2,22 @@ import 'package:fpdart/fpdart.dart';
 
 import '../../../../core/error/failures.dart';
 import '../entities/map_place.dart';
+import '../entities/place_info.dart';
 import '../entities/place_suggestion.dart';
 import '../entities/recent_place.dart';
 import '../entities/trip.dart';
 
 abstract interface class HomeRepository {
-  Future<Either<Failure, List<Trip>>> getNearbyTrips();
+  /// Public trips, nearest to [latitude]/[longitude] first when given; with
+  /// [withinMeters], only trips passing that close.
+  Future<Either<Failure, List<Trip>>> getNearbyTrips({
+    double? latitude,
+    double? longitude,
+    int? withinMeters,
+  });
+
+  /// Saves (favourites) or unsaves a trip for the signed-in user.
+  Future<Either<Failure, Unit>> setTripSaved(String tripId, bool saved);
   Future<Either<Failure, List<MapPlace>>> getMapPlaces();
 
   /// Pass the same [sessionToken] to every search of one session and to the
@@ -25,6 +35,9 @@ abstract interface class HomeRepository {
     String placeId, {
     String? sessionToken,
   });
+
+  /// Name, position and kind of a place, e.g. one tapped on the map.
+  Future<Either<Failure, PlaceInfo>> getPlaceInfo(String placeId);
 
   /// Expands a Google Maps short link to the full URL it points to.
   Future<Either<Failure, String>> resolveMapsLink(String url);

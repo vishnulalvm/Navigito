@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/utils/snackbar.dart';
+import '../widgets/confirm_delete_trip.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
 import '../../domain/repositories/my_trips_repository.dart';
@@ -61,8 +63,18 @@ class MyTripsPage extends ConsumerWidget {
             Expanded(
               child: trips.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (_, _) =>
-                    const Center(child: Text('Could not load trips')),
+                error: (_, _) => Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Could not load trips'),
+                      TextButton(
+                        onPressed: () => ref.invalidate(myTripsProvider(tab)),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
                 data: (items) => items.isEmpty
                     ? Center(
                         child: Text(switch (tab) {
@@ -84,9 +96,28 @@ class MyTripsPage extends ConsumerWidget {
                           trip: items[i],
                           onTap: () =>
                               context.push(AppRouter.tripDetail(items[i].id)),
-                          onFavorite: () =>
-                              notifier.toggleFavorite(items[i].id),
-                          onRemove: () => notifier.remove(items[i].id),
+                          onFavorite: () async {
+                            final error = await notifier.toggleFavorite(
+                              items[i].id,
+                            );
+                            if (context.mounted) showErrorSnack(context, error);
+                          },
+                          removeLabel: tab == MyTripsTab.mine
+                              ? 'Delete'
+                              : 'Remove',
+                          onRemove: () async {
+                            if (tab == MyTripsTab.mine &&
+                                !await confirmDeleteTrip(
+                                  context,
+                                  items[i].title,
+                                )) {
+                              return;
+                            }
+                            final error = await notifier.remove(items[i].id);
+                            if (context.mounted) {
+                              showErrorSnack(context, error);
+                            }
+                          },
                         ),
                       ),
               ),

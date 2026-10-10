@@ -3,6 +3,7 @@ import 'package:fpdart/fpdart.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/map_place.dart';
+import '../../domain/entities/place_info.dart';
 import '../../domain/entities/place_suggestion.dart';
 import '../../domain/entities/recent_place.dart';
 import '../../domain/entities/trip.dart';
@@ -11,17 +12,45 @@ import '../datasources/home_mock_datasource.dart';
 import '../datasources/maps_link_remote_datasource.dart';
 import '../datasources/places_remote_datasource.dart';
 import '../datasources/recent_places_local_datasource.dart';
+import '../datasources/trip_social_remote_datasource.dart';
+import '../datasources/trips_remote_datasource.dart';
 
 class HomeRepositoryImpl implements HomeRepository {
-  HomeRepositoryImpl(this._mock, this._places, this._links, this._recent);
+  HomeRepositoryImpl(
+    this._mock,
+    this._trips,
+    this._social,
+    this._places,
+    this._links,
+    this._recent,
+  );
 
   final HomeMockDatasource _mock;
+  final TripsRemoteDatasource _trips;
+  final TripSocialRemoteDatasource _social;
   final PlacesRemoteDatasource _places;
   final MapsLinkRemoteDatasource _links;
   final RecentPlacesLocalDatasource _recent;
 
   @override
-  Future<Either<Failure, List<Trip>>> getNearbyTrips() => _guard(_mock.trips);
+  Future<Either<Failure, List<Trip>>> getNearbyTrips({
+    double? latitude,
+    double? longitude,
+    int? withinMeters,
+  }) => _guard(
+    () => _trips.feed(
+      latitude: latitude,
+      longitude: longitude,
+      withinMeters: withinMeters,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, Unit>> setTripSaved(String tripId, bool saved) =>
+      _guard(() async {
+        await _social.setSaved(tripId, saved);
+        return unit;
+      });
 
   @override
   Future<Either<Failure, List<MapPlace>>> getMapPlaces() =>
@@ -47,6 +76,10 @@ class HomeRepositoryImpl implements HomeRepository {
     String placeId, {
     String? sessionToken,
   }) => _guard(() => _places.location(placeId, sessionToken: sessionToken));
+
+  @override
+  Future<Either<Failure, PlaceInfo>> getPlaceInfo(String placeId) =>
+      _guard(() => _places.info(placeId));
 
   @override
   Future<Either<Failure, String>> resolveMapsLink(String url) =>

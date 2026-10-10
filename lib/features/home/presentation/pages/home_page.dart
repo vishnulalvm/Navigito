@@ -60,11 +60,12 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
     });
     ref.listenManual(currentPositionProvider, (_, _) => _recenterOnUser());
-    // Clearing the search (search bar or sheet header) removes the pin.
+    // Clearing the search (search bar or sheet header) removes the pin and
+    // takes the trip list back to around the user.
     ref.listenManual(searchedPlaceProvider, (_, next) {
-      if (next == null && _searchedPin != null) {
-        setState(() => _searchedPin = null);
-      }
+      if (next != null) return;
+      ref.read(searchedLocationProvider.notifier).state = null;
+      if (_searchedPin != null) setState(() => _searchedPin = null);
     });
   }
 
@@ -148,6 +149,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   /// behind it, flies there and names the spot.
   Future<void> _showSearchedPlace(LatLng target) async {
     setState(() => _searchedPin = target);
+    // The sheet lists trips passing near it. Coordinates and links may have
+    // no name; the title still needs one, and its ✕ clears the search.
+    ref.read(searchedLocationProvider.notifier).state = target;
+    if (ref.read(searchedPlaceProvider) == null) {
+      ref.read(searchedPlaceProvider.notifier).state = 'this area';
+    }
     if (_sheet.currentSize > _sheet.initialSize) _sheet.rest();
     await _goTo(target);
     if (mounted && _searchedPin == target) {

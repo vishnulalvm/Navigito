@@ -3,16 +3,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../features/add_trip/data/datasources/add_trip_remote_datasource.dart';
+import '../../features/add_trip/data/repositories/add_trip_repository_impl.dart';
+import '../../features/add_trip/domain/repositories/add_trip_repository.dart';
 import '../../features/home/data/datasources/home_mock_datasource.dart';
 import '../../features/home/data/datasources/maps_link_remote_datasource.dart';
 import '../../features/home/data/datasources/places_remote_datasource.dart';
 import '../../features/home/data/datasources/recent_places_local_datasource.dart';
+import '../../features/home/data/datasources/trip_social_remote_datasource.dart';
+import '../../features/home/data/datasources/trips_remote_datasource.dart';
 import '../../features/home/data/repositories/home_repository_impl.dart';
 import '../../features/home/domain/repositories/home_repository.dart';
-import '../../features/trip_detail/data/datasources/trip_detail_mock_datasource.dart';
+import '../../features/trip_detail/data/datasources/trip_detail_remote_datasource.dart';
 import '../../features/trip_detail/data/repositories/trip_detail_repository_impl.dart';
 import '../../features/trip_detail/domain/repositories/trip_detail_repository.dart';
-import '../../features/my_trips/data/datasources/my_trips_mock_datasource.dart';
+import '../../features/my_trips/data/datasources/my_trips_remote_datasource.dart';
 import '../../features/my_trips/data/repositories/my_trips_repository_impl.dart';
 import '../../features/my_trips/domain/repositories/my_trips_repository.dart';
 import '../../features/notifications/data/datasources/notifications_mock_datasource.dart';
@@ -37,6 +42,8 @@ final sl = GetIt.instance;
 
 Future<void> configureDependencies() async {
   final prefs = await SharedPreferences.getInstance();
+  // Likes, saves and follows are shared by home, trip detail and My Trips.
+  final social = TripSocialRemoteDatasource();
 
   sl
     ..registerLazySingleton<Dio>(createDioClient)
@@ -49,13 +56,15 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<HomeRepository>(
       () => HomeRepositoryImpl(
         HomeMockDatasource(),
+        TripsRemoteDatasource(),
+        social,
         PlacesRemoteDatasource(Dio()),
         MapsLinkRemoteDatasource(Dio()),
         RecentPlacesLocalDatasource(prefs),
       ),
     )
     ..registerLazySingleton<TripDetailRepository>(
-      () => TripDetailRepositoryImpl(TripDetailMockDatasource()),
+      () => TripDetailRepositoryImpl(TripDetailRemoteDatasource(), social),
     )
     ..registerLazySingleton<RouteRepository>(
       () => RouteRepositoryImpl(RoutesRemoteDatasource(Dio())),
@@ -64,7 +73,10 @@ Future<void> configureDependencies() async {
       () => AuthRepositoryImpl(AuthRemoteDatasource()),
     )
     ..registerLazySingleton<MyTripsRepository>(
-      () => MyTripsRepositoryImpl(MyTripsMockDatasource()),
+      () => MyTripsRepositoryImpl(MyTripsRemoteDatasource()),
+    )
+    ..registerLazySingleton<AddTripRepository>(
+      () => AddTripRepositoryImpl(AddTripRemoteDatasource()),
     )
     ..registerLazySingleton<NotificationsRepository>(
       () => NotificationsRepositoryImpl(NotificationsMockDatasource()),

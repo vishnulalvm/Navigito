@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart'
+    show GoogleMapsFlutterPlatform, PointOfInterestTapEvent;
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/app_router.dart';
@@ -10,10 +14,14 @@ import '../../../../core/services/map_camera_cache.dart';
 import '../../../../core/theme/map_styles.dart';
 import '../../../../core/widgets/dropped_pin.dart';
 import '../../../../core/widgets/map_sheet.dart';
+import '../../../home/domain/entities/place_info.dart';
+import '../../../home/domain/repositories/home_repository.dart';
+import '../../../home/domain/usecases/get_place_info.dart';
 import '../../../home/presentation/providers/home_providers.dart';
 import '../../../home/presentation/widgets/home_search_bar.dart';
 import '../../../home/presentation/widgets/map_round_button.dart';
 import '../../../trip_detail/presentation/widgets/route_map_helpers.dart';
+import '../../../trip_detail/presentation/widgets/stop_style.dart';
 import '../providers/trip_draft_provider.dart';
 import '../widgets/draft_stops_sheet.dart';
 
@@ -39,8 +47,14 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
   /// Where typed coordinates or a pasted link point, before it's added.
   LatLng? _preview;
 
-  /// Where the user tapped the map; added with the card's button.
+  /// Where the user tapped empty map; added with the card's button.
   LatLng? _dropped;
+
+  /// A place label tapped on the map: its id while its details load, then
+  /// the place. Android only; iOS taps drop a plain pin.
+  String? _placeLoadingId;
+  PlaceInfo? _place;
+  StreamSubscription<PointOfInterestTapEvent>? _placeTaps;
 
   /// Drawn pins by type and number; drawing one takes a frame or two.
   final _pins = <String, BitmapDescriptor>{};
@@ -57,6 +71,7 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
 
   @override
   void dispose() {
+    _placeTaps?.cancel();
     _sheet.dispose();
     super.dispose();
   }
@@ -147,7 +162,7 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
   void _onPreview(LatLng? position) {
     setState(() {
       _preview = position;
-      if (position != null) _dropped = null;
+      if (position != null) _clearPick();
     });
     if (position != null) _goTo(position, zoom: 15);
   }
@@ -157,9 +172,60 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
     if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
     HapticFeedback.selectionClick();
     setState(() {
+      _clearPick();
       _dropped = position;
       _preview = null;
     });
+  }
+
+  /// One Place Details call (cached) turns the tapped label's id into its
+  /// name, position and kind.
+  Future<void> _onPlaceTap(PointOfInterestTapEvent event) async {
+    final id = event.value.value;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _clearPick();
+      _preview = null;
+      _placeLoadingId = id;
+    });
+    final result = await GetPlaceInfo(sl<HomeRepository>())(id);
+    if (!mounted || _placeLoadingId != id) return;
+    result.fold(
+      (_) {
+        setState(() => _placeLoadingId = null);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Could not load this place')),
+          );
+      },
+      (place) => setState(() {
+        _placeLoadingId = null;
+        _place = place;
+      }),
+    );
+  }
+
+  /// Forgets the dropped pin or tapped place (call inside setState).
+  void _clearPick() {
+    _dropped = null;
+    _place = null;
+    _placeLoadingId = null;
+  }
+
+  void _addPlace() {
+    final place = _place;
+    if (place == null) return;
+    setState(_clearPick);
+    _onPicked(
+      PickedPlace(
+        id: place.placeId,
+        name: place.name,
+        subtitle: place.address,
+        position: LatLng(place.latitude, place.longitude),
+        types: place.types,
+      ),
+    );
   }
 
   void _addDropped() {
@@ -175,6 +241,29 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
         subtitle: 'Dropped pin',
         position: pos,
       ),
+    );
+  }
+
+  Widget _pickCard() {
+    final place = _place;
+    if (place != null) {
+      return DroppedPinCard(
+        position: LatLng(place.latitude, place.longitude),
+        title: place.name,
+        subtitle: place.address.isEmpty ? null : place.address,
+        icon: stopTypeFor(place.types).icon,
+        actionLabel: 'Add stop',
+        onAction: _addPlace,
+        onClose: () => setState(_clearPick),
+      );
+    }
+    return DroppedPinCard(
+      position: _dropped,
+      loading: _placeLoadingId != null,
+      subtitle: _placeLoadingId != null ? 'Getting its details' : null,
+      actionLabel: 'Add stop',
+      onAction: _addDropped,
+      onClose: () => setState(_clearPick),
     );
   }
 
@@ -219,7 +308,12 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
                 style: isDark ? kDarkMapStyle : null,
                 markers: {
                   ..._markers,
-                  if (_dropped ?? _preview case final pin?)
+                  if (_place case final place?)
+                    previewMarker(
+                      LatLng(place.latitude, place.longitude),
+                      title: place.name,
+                    )
+                  else if (_dropped ?? _preview case final pin?)
                     previewMarker(
                       pin,
                       title: _dropped != null ? 'Dropped pin' : 'Preview',
@@ -249,6 +343,10 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
                 onTap: _onMapTap,
                 onMapCreated: (c) {
                   _map = c;
+                  _placeTaps?.cancel();
+                  _placeTaps = GoogleMapsFlutterPlatform.instance
+                      .onPointOfInterestTap(mapId: c.mapId)
+                      .listen(_onPlaceTap);
                   // Coming back to a draft, show what's already there.
                   if (stops.isNotEmpty) _frameStops();
                 },
@@ -260,26 +358,24 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
                 onNext: _next,
                 onStopTap: _focusStop,
               ),
-              if (_dropped case final pin?)
+              if (_place != null || _placeLoadingId != null || _dropped != null)
                 MapSheetFab(
-                  key: const ValueKey('dropped'),
+                  key: const ValueKey('picked'),
                   controller: _sheet,
                   screenHeight: height,
                   left: 16,
                   child: TweenAnimationBuilder<double>(
-                    // Re-keyed per pin so each drop pops in.
-                    key: ValueKey(pin),
+                    // Re-keyed per pick so each one pops in; a place keeps
+                    // its key from loading to loaded.
+                    key: ValueKey(
+                      _place?.placeId ?? _placeLoadingId ?? _dropped,
+                    ),
                     tween: Tween(begin: 0.85, end: 1),
                     duration: const Duration(milliseconds: 250),
                     curve: Curves.easeOutBack,
                     builder: (context, scale, child) =>
                         Transform.scale(scale: scale, child: child),
-                    child: DroppedPinCard(
-                      position: pin,
-                      actionLabel: 'Add stop',
-                      onAction: _addDropped,
-                      onClose: () => setState(() => _dropped = null),
-                    ),
+                    child: _pickCard(),
                   ),
                 )
               else

@@ -133,8 +133,19 @@ class _TripCardState extends State<TripCard> {
                         CircleAvatar(
                           radius: 11,
                           backgroundColor: scheme.surfaceContainerHighest,
-                          backgroundImage: NetworkImage(trip.authorAvatarUrl),
-                          onBackgroundImageError: (_, _) {},
+                          backgroundImage: trip.authorAvatarUrl.isEmpty
+                              ? null
+                              : NetworkImage(trip.authorAvatarUrl),
+                          onBackgroundImageError: trip.authorAvatarUrl.isEmpty
+                              ? null
+                              : (_, _) {},
+                          child: trip.authorAvatarUrl.isEmpty
+                              ? Icon(
+                                  Icons.person,
+                                  size: 14,
+                                  color: scheme.onSurfaceVariant,
+                                )
+                              : null,
                         ),
                         const SizedBox(width: 8),
                         Flexible(

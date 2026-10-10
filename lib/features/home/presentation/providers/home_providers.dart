@@ -10,6 +10,9 @@ import '../../../../core/services/marker_icon_builder.dart';
 import '../../../../core/utils/location_input.dart';
 import '../../../../core/utils/plus_code.dart';
 import '../../../../core/utils/session_token.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../my_trips/domain/repositories/my_trips_repository.dart';
+import '../../../my_trips/presentation/providers/my_trips_providers.dart';
 import '../../../trip_detail/domain/entities/trip_detail.dart';
 import '../../../trip_detail/domain/repositories/trip_detail_repository.dart';
 import '../../../trip_detail/domain/usecases/get_trip_detail.dart';
@@ -24,6 +27,7 @@ import '../../domain/usecases/get_nearby_trips.dart';
 import '../../domain/usecases/get_place_location.dart';
 import '../../domain/usecases/recent_places.dart';
 import '../../domain/usecases/resolve_maps_link.dart';
+import '../../domain/usecases/save_trip.dart';
 import '../../domain/usecases/search_places.dart';
 
 final _repoProvider = Provider<HomeRepository>((_) => sl<HomeRepository>());
@@ -58,19 +62,64 @@ final placeMarkersProvider = FutureProvider<Set<Marker>>((ref) async {
   return markers.toSet();
 });
 
+/// Public trips for the home sheet: around a searched place when there is
+/// one, otherwise nearest the user first.
 class TripsNotifier extends AsyncNotifier<List<Trip>> {
+  /// A searched place shows trips with a stop this close to it.
+  static const _searchRadiusMeters = 40000;
+
   @override
   Future<List<Trip>> build() async {
-    final result = await GetNearbyTrips(ref.watch(_repoProvider))();
-    return result.getOrElse((_) => const []);
+    // Saved flags belong to the user, so signing in or out reloads.
+    ref.watch(authUserProvider.select((u) => u.valueOrNull?.id));
+    final searched = ref.watch(searchedLocationProvider);
+    final here = searched == null
+        ? await ref.watch(currentPositionProvider.future)
+        : null;
+    final result = await GetNearbyTrips(ref.watch(_repoProvider))(
+      latitude: searched?.latitude ?? here?.latitude,
+      longitude: searched?.longitude ?? here?.longitude,
+      withinMeters: searched == null ? null : _searchRadiusMeters,
+    );
+    return result.fold((f) => throw Exception(f.message), (t) => t);
   }
 
-  void toggleFavorite(String id) {
+  /// Saves or unsaves at once, then syncs; undoes it if the server refuses.
+  /// Returns the error message, or null on success.
+  Future<String?> toggleFavorite(String id) async {
+    final trip = state.valueOrNull?.where((t) => t.id == id).firstOrNull;
+    if (trip == null) return null;
+    final saved = !trip.isFavorite;
+    patchSaved(id, saved);
+    final result = await SaveTrip(ref.read(_repoProvider))(id, saved);
+    return result.fold(
+      (f) {
+        patchSaved(id, !saved);
+        return f.message;
+      },
+      (_) {
+        ref.invalidate(myTripsProvider(MyTripsTab.saved));
+        return null;
+      },
+    );
+  }
+
+  /// Mirrors a save made elsewhere (trip screen, My Trips) on this list.
+  void patchSaved(String id, bool saved) {
+    final trips = state.valueOrNull;
+    if (trips == null || !trips.any((t) => t.id == id)) return;
+    state = AsyncData([
+      for (final t in trips) t.id == id ? t.copyWith(isFavorite: saved) : t,
+    ]);
+  }
+
+  /// Drops a deleted trip without reloading the feed.
+  void drop(String id) {
     final trips = state.valueOrNull;
     if (trips == null) return;
     state = AsyncData([
       for (final t in trips)
-        t.id == id ? t.copyWith(isFavorite: !t.isFavorite) : t,
+        if (t.id != id) t,
     ]);
   }
 }
@@ -102,25 +151,17 @@ enum TripFilter {
 
 final tripFilterProvider = StateProvider<TripFilter>((_) => TripFilter.nearby);
 
-/// Place picked from the search bar (e.g. "Munnar"); null = no place filter.
+/// Name of the place picked in the search bar (e.g. "Munnar"), for the
+/// sheet's title; null = no place picked.
 final searchedPlaceProvider = StateProvider<String?>((_) => null);
+
+/// Where the picked place is; the feed then shows trips passing near it.
+final searchedLocationProvider = StateProvider<LatLng?>((_) => null);
 
 final filteredTripsProvider = Provider<AsyncValue<List<Trip>>>((ref) {
   final filter = ref.watch(tripFilterProvider);
-  final place = ref.watch(searchedPlaceProvider)?.toLowerCase();
-
-  return ref.watch(tripsProvider).whenData((trips) {
-    // Dummy place match; the backend will do this with a geo query.
-    final inPlace = place == null
-        ? trips
-        : trips
-              .where(
-                (t) =>
-                    t.places.any((p) => place.contains(p) || p.contains(place)),
-              )
-              .toList();
-    return filter.apply(inPlace);
-  });
+  // The place itself is filtered by distance on the server.
+  return ref.watch(tripsProvider).whenData(filter.apply);
 });
 
 /// A location typed or pasted directly (link, coordinates, plus code)

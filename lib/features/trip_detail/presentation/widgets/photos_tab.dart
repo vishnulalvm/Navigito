@@ -28,6 +28,7 @@ class _PhotosTabState extends State<PhotosTab> {
     final photos = widget.trip.stops
         .where(
           (s) =>
+              s.photoUrl.isNotEmpty &&
               s.type != StopType.start &&
               (_filter == null || s.type == _filter),
         )

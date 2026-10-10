@@ -8,5 +8,13 @@ class GetNearbyTrips {
   const GetNearbyTrips(this._repository);
   final HomeRepository _repository;
 
-  Future<Either<Failure, List<Trip>>> call() => _repository.getNearbyTrips();
+  Future<Either<Failure, List<Trip>>> call({
+    double? latitude,
+    double? longitude,
+    int? withinMeters,
+  }) => _repository.getNearbyTrips(
+    latitude: latitude,
+    longitude: longitude,
+    withinMeters: withinMeters,
+  );
 }

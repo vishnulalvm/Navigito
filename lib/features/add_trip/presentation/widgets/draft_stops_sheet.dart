@@ -74,9 +74,8 @@ class DraftStopsSheet extends ConsumerWidget {
             padding: EdgeInsets.fromLTRB(12, 4, 12, bottomInset),
             sliver: SliverReorderableList(
               itemCount: stops.length,
-              onReorder: (from, to) => ref
-                  .read(tripDraftProvider.notifier)
-                  .reorder(from, to > from ? to - 1 : to),
+              onReorderItem: (from, to) =>
+                  ref.read(tripDraftProvider.notifier).reorder(from, to),
               proxyDecorator: (child, _, animation) => AnimatedBuilder(
                 animation: animation,
                 builder: (context, child) => Material(

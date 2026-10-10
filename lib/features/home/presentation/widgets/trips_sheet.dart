@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/snackbar.dart';
 import '../../../../core/widgets/map_sheet.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip.dart';
@@ -105,10 +106,14 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
               itemBuilder: (_, _) => const TripCardSkeleton(),
             ),
           ),
-          error: (_, _) => const SliverToBoxAdapter(
+          error: (_, _) => SliverToBoxAdapter(
             child: _Message(
               icon: Icons.cloud_off_outlined,
               text: 'Could not load trips',
+              action: TextButton(
+                onPressed: () => ref.invalidate(tripsProvider),
+                child: const Text('Retry'),
+              ),
             ),
           ),
         ),
@@ -125,9 +130,13 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
       final ok = await ensureSignedIn(
         context,
         ref,
-        reason: 'Sign in to like trips',
+        reason: 'Sign in to save trips',
       );
-      if (ok) ref.read(tripsProvider.notifier).toggleFavorite(trip.id);
+      if (!ok) return;
+      final error = await ref
+          .read(tripsProvider.notifier)
+          .toggleFavorite(trip.id);
+      if (mounted) showErrorSnack(context, error);
     },
   );
 }

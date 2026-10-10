@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../trip_detail/domain/entities/trip_stop.dart';
+import '../../domain/entities/new_trip.dart';
 
 /// A place added to the trip being created.
 class DraftStop {
@@ -128,6 +129,36 @@ class TripDraft {
     return minutes >= 23 * 60
         ? const TimeOfDay(hour: 23, minute: 0)
         : TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+  }
+
+  /// The trip to create, named [title]. Every stop gets its scheduled time,
+  /// set or automatic, so the trip reads the same once published.
+  NewTrip toNewTrip(String title) {
+    final times = schedule;
+    String hhmm(TimeOfDay t) =>
+        '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}';
+    return NewTrip(
+      title: title.trim(),
+      description: description.trim(),
+      days: days,
+      tags: categories.toList(),
+      isPublic: isPublic,
+      stops: [
+        for (final (i, s) in stops.indexed)
+          NewStop(
+            day: s.day,
+            time: hhmm(times[i]),
+            title: s.name,
+            subtitle: s.subtitle,
+            type: s.type,
+            latitude: s.position.latitude,
+            longitude: s.position.longitude,
+            // Dropped pins and pasted coordinates have no Google place.
+            placeId: s.id.startsWith('geo:') ? null : s.id,
+          ),
+      ],
+    );
   }
 
   TripDraft copyWith({

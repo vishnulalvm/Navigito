@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/utils/snackbar.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
@@ -54,8 +55,14 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
     );
   }
 
-  Future<void> _guarded(String reason, VoidCallback action) async {
-    if (await ensureSignedIn(context, ref, reason: reason)) action();
+  /// Runs [action] once signed in; tells the user if it didn't stick.
+  Future<void> _guarded(
+    String reason,
+    Future<String?> Function() action,
+  ) async {
+    if (!await ensureSignedIn(context, ref, reason: reason)) return;
+    final error = await action();
+    if (mounted) showErrorSnack(context, error);
   }
 
   Widget _buildContent(TripDetail trip) {
@@ -262,7 +269,15 @@ class _FullHeader extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundImage: NetworkImage(trip.authorAvatarUrl),
+                backgroundImage: trip.authorAvatarUrl.isEmpty
+                    ? null
+                    : NetworkImage(trip.authorAvatarUrl),
+                onBackgroundImageError: trip.authorAvatarUrl.isEmpty
+                    ? null
+                    : (_, _) {},
+                child: trip.authorAvatarUrl.isEmpty
+                    ? const Icon(Icons.person)
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(

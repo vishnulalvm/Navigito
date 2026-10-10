@@ -11,12 +11,16 @@ class MyTripTile extends StatelessWidget {
     required this.onTap,
     required this.onFavorite,
     required this.onRemove,
+    this.removeLabel = 'Remove',
   });
 
   final Trip trip;
   final VoidCallback onTap;
   final VoidCallback onFavorite;
   final VoidCallback onRemove;
+
+  /// "Delete" for the user's own trips, "Remove" for saved or liked ones.
+  final String removeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +90,15 @@ class MyTripTile extends StatelessWidget {
                         children: [
                           CircleAvatar(
                             radius: 13,
-                            backgroundImage: NetworkImage(trip.authorAvatarUrl),
+                            backgroundImage: trip.authorAvatarUrl.isEmpty
+                                ? null
+                                : NetworkImage(trip.authorAvatarUrl),
+                            onBackgroundImageError: trip.authorAvatarUrl.isEmpty
+                                ? null
+                                : (_, _) {},
+                            child: trip.authorAvatarUrl.isEmpty
+                                ? const Icon(Icons.person, size: 16)
+                                : null,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -101,14 +113,14 @@ class MyTripTile extends StatelessWidget {
                             onSelected: (m) {
                               if (m == _TripMenu.remove) onRemove();
                             },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
                                 value: _TripMenu.share,
                                 child: Text('Share'),
                               ),
                               PopupMenuItem(
                                 value: _TripMenu.remove,
-                                child: Text('Remove'),
+                                child: Text(removeLabel),
                               ),
                             ],
                           ),

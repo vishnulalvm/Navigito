@@ -40,8 +40,7 @@ class AddTripTimelinePage extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 24),
               buildDefaultDragHandles: false,
               itemCount: items.length,
-              onReorder: (from, to) =>
-                  _onReorder(ref, items, from, to > from ? to - 1 : to),
+              onReorderItem: (from, to) => _onReorder(ref, items, from, to),
               proxyDecorator: (child, _, animation) => AnimatedBuilder(
                 animation: animation,
                 builder: (context, child) => Material(

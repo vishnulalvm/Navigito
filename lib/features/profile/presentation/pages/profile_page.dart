@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/utils/snackbar.dart';
+import '../../../my_trips/presentation/widgets/confirm_delete_trip.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/theme_mode_provider.dart';
 import '../../../main_shell/presentation/widgets/floating_nav_bar.dart';
@@ -143,8 +145,16 @@ class ProfilePage extends ConsumerWidget {
                     MyTripTile(
                       trip: t,
                       onTap: () => context.push(AppRouter.tripDetail(t.id)),
-                      onFavorite: () => tripsNotifier.toggleFavorite(t.id),
-                      onRemove: () => tripsNotifier.remove(t.id),
+                      onFavorite: () async {
+                        final error = await tripsNotifier.toggleFavorite(t.id);
+                        if (context.mounted) showErrorSnack(context, error);
+                      },
+                      removeLabel: 'Delete',
+                      onRemove: () async {
+                        if (!await confirmDeleteTrip(context, t.title)) return;
+                        final error = await tripsNotifier.remove(t.id);
+                        if (context.mounted) showErrorSnack(context, error);
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],

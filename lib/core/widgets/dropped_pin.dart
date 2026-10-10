@@ -16,7 +16,8 @@ Marker previewMarker(LatLng position, {String title = 'Dropped pin'}) => Marker(
 String formatLatLng(LatLng p) =>
     '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
 
-/// Card for a pin dropped on the map, with one action for it.
+/// Card for a spot picked on the map (a dropped pin or a tapped place),
+/// with one action for it.
 class DroppedPinCard extends StatelessWidget {
   const DroppedPinCard({
     super.key,
@@ -24,12 +25,27 @@ class DroppedPinCard extends StatelessWidget {
     required this.actionLabel,
     required this.onAction,
     required this.onClose,
+    this.title = 'Dropped pin',
+    this.subtitle,
+    this.icon = Icons.pin_drop_outlined,
+    this.loading = false,
   });
 
-  final LatLng position;
+  /// Unknown while a tapped place is [loading].
+  final LatLng? position;
   final String actionLabel;
+
+  /// Disabled while [loading].
   final VoidCallback onAction;
   final VoidCallback onClose;
+  final String title;
+
+  /// Defaults to the coordinates.
+  final String? subtitle;
+  final IconData icon;
+
+  /// The place's details are still being fetched.
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -51,10 +67,15 @@ class DroppedPinCard extends StatelessWidget {
                 color: scheme.primaryContainer,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.pin_drop_outlined,
-                color: scheme.onPrimaryContainer,
-              ),
+              child: loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(11),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    )
+                  : Icon(icon, color: scheme.onPrimaryContainer),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -63,13 +84,18 @@ class DroppedPinCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Dropped pin',
+                    loading ? 'Loading place…' : title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   Text(
-                    formatLatLng(position),
+                    subtitle ??
+                        (position == null ? '' : formatLatLng(position!)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -83,7 +109,10 @@ class DroppedPinCard extends StatelessWidget {
               onPressed: onClose,
               icon: const Icon(Icons.close),
             ),
-            FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            FilledButton(
+              onPressed: loading ? null : onAction,
+              child: Text(actionLabel),
+            ),
           ],
         ),
       ),

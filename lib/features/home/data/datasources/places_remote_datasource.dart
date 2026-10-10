@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../core/constants/env.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../domain/entities/place_info.dart';
 import '../../domain/entities/place_suggestion.dart';
 
 /// Google Places API (New): autocomplete + place location.
@@ -24,6 +25,7 @@ class PlacesRemoteDatasource {
 
   final _suggestionCache = <String, List<PlaceSuggestion>>{};
   final _locationCache = <String, (double, double)>{};
+  final _infoCache = <String, PlaceInfo>{};
 
   Future<List<PlaceSuggestion>> autocomplete(
     String query, {
@@ -100,6 +102,41 @@ class PlacesRemoteDatasource {
       distanceMeters: p['distanceMeters'] as int?,
       types: [...?(p['types'] as List?)?.cast<String>()],
     );
+  }
+
+  /// Name, position and kind of a place tapped on the map. `displayName`
+  /// bills as Place Details Pro, so it's only asked once per place.
+  Future<PlaceInfo> info(String placeId) async {
+    final cached = _infoCache[placeId];
+    if (cached != null) return cached;
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '$_base/places/$placeId',
+        queryParameters: {'languageCode': 'en'},
+        options: Options(
+          headers: {
+            'X-Goog-Api-Key': Env.placesApiKey,
+            'X-Goog-FieldMask':
+                'displayName,location,types,shortFormattedAddress',
+          },
+        ),
+      );
+      final data = res.data!;
+      final loc = data['location'] as Map<String, dynamic>;
+      final name = data['displayName'] as Map<String, dynamic>? ?? const {};
+      final info = PlaceInfo(
+        placeId: placeId,
+        name: name['text'] as String? ?? 'Unnamed place',
+        latitude: (loc['latitude'] as num).toDouble(),
+        longitude: (loc['longitude'] as num).toDouble(),
+        address: data['shortFormattedAddress'] as String? ?? '',
+        types: [...?(data['types'] as List?)?.cast<String>()],
+      );
+      _locationCache[placeId] = (info.latitude, info.longitude);
+      return _infoCache[placeId] = info;
+    } on DioException catch (e) {
+      throw ServerException(e.message ?? 'Places request failed');
+    }
   }
 
   /// Ends the autocomplete session when [sessionToken] is given. Only the

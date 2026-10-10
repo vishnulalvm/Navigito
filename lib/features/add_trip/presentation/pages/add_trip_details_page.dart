@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
-import '../../../home/domain/entities/trip.dart';
+import '../../../../core/di/injection.dart';
+import '../../../../core/utils/snackbar.dart';
+import '../../../home/presentation/providers/home_providers.dart';
 import '../../../my_trips/domain/repositories/my_trips_repository.dart';
 import '../../../my_trips/presentation/providers/my_trips_providers.dart';
+import '../../domain/repositories/add_trip_repository.dart';
+import '../../domain/usecases/create_trip.dart';
 import '../providers/trip_draft_provider.dart';
 import '../widgets/add_trip_bottom_action.dart';
 import '../widgets/step_progress.dart';
@@ -28,11 +32,6 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
     'Adventure',
     'Beach',
   ];
-  static const _placeholderCover =
-      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400';
-  static const _selfAvatar =
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100';
-
   final _formKey = GlobalKey<FormState>();
 
   // Starts from what was typed before, or a title made from the stops.
@@ -44,6 +43,9 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
 
   TripDraftNotifier get _draft => ref.read(tripDraftProvider.notifier);
 
+  /// The create request is in flight; the button waits and can't resend.
+  bool _creating = false;
+
   @override
   void dispose() {
     _title.dispose();
@@ -51,29 +53,29 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
     super.dispose();
   }
 
-  void _create() {
-    if (!_formKey.currentState!.validate()) return;
-    final draft = ref.read(tripDraftProvider);
+  /// Publishes the trip with all its stops in one request. On failure the
+  /// draft stays, so nothing is lost and Create can be tapped again.
+  Future<void> _create() async {
+    if (_creating || !_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _creating = true);
 
-    final trip = Trip(
-      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
-      title: _title.text.trim(),
-      coverUrl: _placeholderCover,
-      days: draft.days,
-      stops: draft.stops.length,
-      authorName: 'You',
-      authorAvatarUrl: _selfAvatar,
-      likes: 0,
-      places: [for (final s in draft.stops) s.name.toLowerCase()],
-    );
-    ref.read(myTripsProvider(MyTripsTab.mine).notifier).add(trip);
-    ref.read(myTripsTabProvider.notifier).state = MyTripsTab.mine;
-    _draft.reset();
+    final newTrip = ref.read(tripDraftProvider).toNewTrip(_title.text);
+    final result = await CreateTrip(sl<AddTripRepository>())(newTrip);
+    if (!mounted) return;
+    setState(() => _creating = false);
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Trip created')));
-    context.go(AppRouter.myTrips);
+    result.fold((f) => showErrorSnack(context, f.message), (_) {
+      _draft.reset();
+      ref
+        ..invalidate(myTripsProvider(MyTripsTab.mine))
+        ..invalidate(tripsProvider);
+      ref.read(myTripsTabProvider.notifier).state = MyTripsTab.mine;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Trip published')));
+      context.go(AppRouter.myTrips);
+    });
   }
 
   @override
@@ -181,8 +183,9 @@ class _AddTripDetailsPageState extends ConsumerState<AddTripDetailsPage> {
         ),
       ),
       bottomNavigationBar: AddTripBottomAction(
-        label: 'Create trip',
+        label: _creating ? 'Publishing…' : 'Create trip',
         icon: Icons.check,
+        loading: _creating,
         onPressed: _create,
       ),
     );
