@@ -14,6 +14,9 @@ class Trip extends Equatable {
     this.places = const [],
     this.isFavorite = false,
     this.coverPlaceId,
+    this.description = '',
+    this.tags = const [],
+    this.photosCount = 0,
   });
 
   final String id;
@@ -35,6 +38,13 @@ class Trip extends Equatable {
   /// Lowercase names of places the trip passes through (used for place search).
   final List<String> places;
   final bool isFavorite;
+  final String description;
+
+  /// Lowercase labels such as "cultural"; the first is shown as the category.
+  final List<String> tags;
+
+  /// Photos the author uploaded across all stops.
+  final int photosCount;
 
   Trip copyWith({bool? isFavorite}) => Trip(
     id: id,
@@ -49,6 +59,9 @@ class Trip extends Equatable {
     places: places,
     isFavorite: isFavorite ?? this.isFavorite,
     coverPlaceId: coverPlaceId,
+    description: description,
+    tags: tags,
+    photosCount: photosCount,
   );
 
   @override

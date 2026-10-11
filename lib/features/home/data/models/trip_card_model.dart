@@ -15,6 +15,9 @@ Trip tripFromCard(Map<String, dynamic> row) => Trip(
   places: [...?(row['places'] as List?)?.cast<String>()],
   isFavorite: row['is_saved'] == true,
   coverPlaceId: row['cover_place_id'] as String?,
+  description: row['description'] as String? ?? '',
+  tags: [...?(row['tags'] as List?)?.cast<String>()],
+  photosCount: row['photos_count'] as int? ?? 0,
 );
 
 List<Trip> tripsFromCards(Object? rows) => [

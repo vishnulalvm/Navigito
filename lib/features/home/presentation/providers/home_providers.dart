@@ -131,9 +131,9 @@ final tripsProvider = AsyncNotifierProvider<TripsNotifier, List<Trip>>(
 enum TripFilter {
   nearby('Nearby'),
   trending('Trending'),
-  oneDay('1 Day'),
-  twoDays('2 Days'),
-  threePlusDays('3+ Days');
+  weekend('Weekend'),
+  roadTrips('Road trips'),
+  saved('Saved');
 
   const TripFilter(this.label);
   final String label;
@@ -143,9 +143,9 @@ enum TripFilter {
     TripFilter.trending => [
       ...trips,
     ]..sort((a, b) => b.likes.compareTo(a.likes)),
-    TripFilter.oneDay => trips.where((t) => t.days == 1).toList(),
-    TripFilter.twoDays => trips.where((t) => t.days == 2).toList(),
-    TripFilter.threePlusDays => trips.where((t) => t.days >= 3).toList(),
+    TripFilter.weekend => trips.where((t) => t.days <= 2).toList(),
+    TripFilter.roadTrips => trips.where((t) => t.stops >= 4).toList(),
+    TripFilter.saved => trips.where((t) => t.isFavorite).toList(),
   };
 }
 

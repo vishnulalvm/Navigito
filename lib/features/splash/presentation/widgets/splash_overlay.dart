@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../home/presentation/providers/home_providers.dart';
+import 'splash_route_animation.dart';
 
 /// Shows the splash on top of the app while the home screen (and its Google
 /// Map) loads underneath. Because the real map is created during the splash,
@@ -111,31 +112,17 @@ class _SplashContent extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: scheme.onPrimary,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.explore, size: 56, color: scheme.primary),
+                SplashRouteAnimation(
+                  background: scheme.primary,
+                  foreground: scheme.onPrimary,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 28),
                 Text(
                   AppConstants.appName,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     color: scheme.onPrimary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: scheme.onPrimary,
                   ),
                 ),
               ],

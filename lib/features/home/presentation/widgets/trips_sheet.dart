@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
-import '../../../../core/utils/snackbar.dart';
 import '../../../../core/widgets/map_sheet.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip.dart';
@@ -149,18 +148,6 @@ class _TripsSheetState extends ConsumerState<TripsSheet>
     trip: trip,
     onTap: () => context.push(AppRouter.tripDetail(trip.id)),
     onRoute: () => widget.onShowRoute(trip.id),
-    onFavorite: () async {
-      final ok = await ensureSignedIn(
-        context,
-        ref,
-        reason: 'Sign in to save trips',
-      );
-      if (!ok) return;
-      final error = await ref
-          .read(tripsProvider.notifier)
-          .toggleFavorite(trip.id);
-      if (mounted) showErrorSnack(context, error);
-    },
   );
 }
 
@@ -173,7 +160,9 @@ class _HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final title = place == null ? 'Public trips near you' : 'Trips in $place';
+    final title = place == null
+        ? 'Find your best destinations'
+        : 'Trips in $place';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
@@ -325,6 +314,13 @@ class _FilterChips extends StatelessWidget {
         itemBuilder: (_, i) {
           final f = TripFilter.values[i];
           return ChoiceChip(
+            avatar: Icon(switch (f) {
+              TripFilter.nearby => Icons.near_me_rounded,
+              TripFilter.trending => Icons.local_fire_department_rounded,
+              TripFilter.weekend => Icons.weekend_rounded,
+              TripFilter.roadTrips => Icons.alt_route_rounded,
+              TripFilter.saved => Icons.favorite_rounded,
+            }, size: 18),
             label: Text(f.label),
             selected: f == selected,
             showCheckmark: false,
@@ -336,7 +332,8 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
-/// Slim, wide promo card inviting users to share a memorable place.
+/// Promo banner inviting users to share a trip: headline on the left, a
+/// landscape illustration fading in on the right.
 class _ShareTripCard extends StatelessWidget {
   const _ShareTripCard({required this.onTap});
 
@@ -344,70 +341,150 @@ class _ShareTripCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final headline = theme.textTheme.headlineSmall?.copyWith(
+      fontWeight: FontWeight.w800,
+      height: 1.1,
+      color: scheme.onSurface,
+    );
 
     return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: Ink(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            colors: [scheme.primary, scheme.tertiary],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: scheme.onPrimary.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.place_rounded, color: scheme.onPrimary),
+      color: Color.alphaBlend(
+        scheme.primary.withValues(alpha: 0.04),
+        scheme.surfaceContainerLowest,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            // Illustration bleeds off the right edge; its left side fades
+            // into the card so the text never sits on busy artwork.
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: -24,
+              width: 230,
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (rect) => const LinearGradient(
+                  colors: [Colors.transparent, Colors.black],
+                  stops: [0, 0.35],
+                ).createShader(rect),
+                child: Image.asset(
+                  'assets/images/share_trip_illustration.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerRight,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Share your memorable place',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: scheme.onPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        'Tap to add a trip and inspire others',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onPrimary.withValues(alpha: 0.85),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(Icons.add_circle, color: scheme.onPrimary, size: 28),
-              ],
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 0, 18),
+              child: FractionallySizedBox(
+                widthFactor: 0.62,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Find your next', style: headline),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Flexible(
+                          child: ShaderMask(
+                            blendMode: BlendMode.srcIn,
+                            shaderCallback: (rect) => LinearGradient(
+                              colors: [scheme.primary, scheme.tertiary],
+                            ).createShader(rect),
+                            child: Text(
+                              'adventure',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: headline,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        CustomPaint(
+                          size: const Size(14, 14),
+                          painter: _SparklePainter(color: scheme.primary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Discover amazing places, plan trips and share your '
+                      'travel stories',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Tells people the banner is tappable.
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add, size: 16, color: scheme.onPrimary),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Share a trip',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: scheme.onPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: scheme.onPrimary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// Three short rays beside "adventure", like a little burst of excitement.
+class _SparklePainter extends CustomPainter {
+  const _SparklePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    final w = size.width, h = size.height;
+    canvas
+      ..drawLine(Offset(w * 0.15, h * 0.55), Offset(w * 0.15, h * 0.95), paint)
+      ..drawLine(Offset(w * 0.45, h * 0.45), Offset(w * 0.85, h * 0.1), paint)
+      ..drawLine(Offset(w * 0.55, h * 0.8), Offset(w * 0.95, h * 0.75), paint);
+  }
+
+  @override
+  bool shouldRepaint(_SparklePainter old) => old.color != color;
 }
