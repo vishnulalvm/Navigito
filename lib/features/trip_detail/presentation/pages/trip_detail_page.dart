@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -265,60 +266,61 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
     void like() => _guarded('Sign in to like trips', notifier.toggleLike);
     void save() => _guarded('Sign in to save trips', notifier.toggleSave);
 
+    if (overview) {
+      return _OverviewLayout(
+        trip: trip,
+        tabBar: _tabBar(),
+        onFollow: own
+            ? null // Nobody follows themselves.
+            : () => _guarded(
+                'Sign in to follow travellers',
+                notifier.toggleFollow,
+              ),
+        onLike: like,
+        onSave: save,
+        onBack: _leave,
+        onMore: () => _showMore(trip, own: own),
+        onSeePhotos: () => _tabs.animateTo(2),
+      );
+    }
+
     return Column(
       children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          alignment: Alignment.topCenter,
-          child: overview
-              ? _FullHeader(
-                  trip: trip,
-                  // Nobody follows themselves.
-                  onFollow: own
-                      ? null
-                      : () => _guarded(
-                          'Sign in to follow travellers',
-                          notifier.toggleFollow,
-                        ),
-                  onLike: like,
-                  onSave: save,
-                  onBack: _leave,
-                  onMore: () => _showMore(trip, own: own),
-                )
-              : _CompactHeader(
-                  trip: trip,
-                  onSave: save,
-                  onBack: _onBack,
-                  onMore: () => _showMore(trip, own: own),
-                ),
+        _CompactHeader(
+          trip: trip,
+          onSave: save,
+          onBack: _onBack,
+          onMore: () => _showMore(trip, own: own),
         ),
-        TabBar(
-          controller: _tabs,
-          dividerHeight: 1,
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Route'),
-            Tab(text: 'Stops'),
-            Tab(text: 'Photos'),
-          ],
-        ),
+        _tabBar(),
         Expanded(
           child: TabBarView(
             controller: _tabs,
             // Prevent horizontal swipes from fighting with map gestures.
             physics: const NeverScrollableScrollPhysics(),
             children: [
-              OverviewTab(trip: trip),
-              RouteTab(trip: trip),
+              // Only seen while sliding back to Overview.
+              SingleChildScrollView(child: OverviewTab(trip: trip)),
               StopsTab(trip: trip),
               PhotosTab(trip: trip),
+              RouteTab(trip: trip),
             ],
           ),
         ),
       ],
     );
   }
+
+  TabBar _tabBar() => TabBar(
+    controller: _tabs,
+    dividerHeight: 1,
+    tabs: const [
+      Tab(text: 'Overview'),
+      Tab(text: 'Stops'),
+      Tab(text: 'Photos'),
+      Tab(text: 'Route'),
+    ],
+  );
 }
 
 /// Round frosted-glass button floating on the cover photo.
@@ -422,29 +424,190 @@ class _CompactHeader extends StatelessWidget {
   }
 }
 
-/// Overview header: photo carousel, title with likes, author, and stats.
-class _FullHeader extends StatelessWidget {
-  const _FullHeader({
+/// Overview page: the cover photo stays put (drifting up slowly) while the
+/// details, tabs and overview scroll over it.
+class _OverviewLayout extends StatefulWidget {
+  const _OverviewLayout({
     required this.trip,
+    required this.tabBar,
     required this.onFollow,
     required this.onLike,
     required this.onSave,
     required this.onBack,
     required this.onMore,
+    required this.onSeePhotos,
+  });
+  final TripDetail trip;
+  final TabBar tabBar;
+  final VoidCallback? onFollow;
+  final VoidCallback onLike;
+  final VoidCallback onSave;
+  final VoidCallback onBack;
+  final VoidCallback onMore;
+  final VoidCallback onSeePhotos;
+
+  @override
+  State<_OverviewLayout> createState() => _OverviewLayoutState();
+}
+
+class _OverviewLayoutState extends State<_OverviewLayout> {
+  static const _coverHeight = 340.0;
+
+  /// How far the rounded content sheet rides up over the photo.
+  static const _overlap = 28.0;
+
+  /// The photo moves at this fraction of the scroll speed.
+  static const _parallax = 0.5;
+
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  double get _offset => _scroll.hasClients ? math.max(0, _scroll.offset) : 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final inset = MediaQuery.paddingOf(context).top;
+    final trip = widget.trip;
+
+    return Stack(
+      children: [
+        AnimatedBuilder(
+          animation: _scroll,
+          builder: (_, child) => Positioned(
+            top: -_offset * _parallax,
+            left: 0,
+            right: 0,
+            height: _coverHeight,
+            child: child!,
+          ),
+          child: _CoverPhoto(trip: trip),
+        ),
+        Padding(
+          padding: EdgeInsets.only(top: inset),
+          child: CustomScrollView(
+            controller: _scroll,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              // Clear window onto the photo.
+              SliverToBoxAdapter(
+                child: SizedBox(height: _coverHeight - _overlap - inset),
+              ),
+              SliverToBoxAdapter(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(_overlap),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 20, bottom: 8),
+                    child: _TripInfo(
+                      trip: trip,
+                      onFollow: widget.onFollow,
+                      onLike: widget.onLike,
+                    ),
+                  ),
+                ),
+              ),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _PinnedTabs(widget.tabBar, scheme.surface),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: ColoredBox(
+                  color: scheme.surface,
+                  child: OverviewTab(
+                    trip: trip,
+                    onSeePhotos: widget.onSeePhotos,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Status-bar backdrop once the photo has scrolled away.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: inset,
+          child: AnimatedBuilder(
+            animation: _scroll,
+            builder: (_, _) => IgnorePointer(
+              child: ColoredBox(
+                color: scheme.surface.withValues(
+                  alpha: ((_offset - 160) / 120).clamp(0.0, 1.0),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Buttons leave with the photo, so they never cover the pinned tabs.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: AnimatedBuilder(
+            animation: _scroll,
+            builder: (_, child) => Opacity(
+              opacity: (1 - _offset / 90).clamp(0.0, 1.0),
+              child: Transform.translate(
+                offset: Offset(0, -_offset),
+                child: IgnorePointer(ignoring: _offset > 60, child: child),
+              ),
+            ),
+            child: _CoverBar(
+              trip: trip,
+              onSave: widget.onSave,
+              onBack: widget.onBack,
+              onMore: widget.onMore,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Keeps the tab bar at the top once it scrolls up to it.
+class _PinnedTabs extends SliverPersistentHeaderDelegate {
+  _PinnedTabs(this.bar, this.color);
+  final TabBar bar;
+  final Color color;
+
+  @override
+  double get minExtent => bar.preferredSize.height;
+  @override
+  double get maxExtent => bar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
+      ColoredBox(color: color, child: bar);
+
+  @override
+  bool shouldRebuild(_PinnedTabs old) => old.bar != bar || old.color != color;
+}
+
+/// Overview info: title with likes, author with follow, and the stats row.
+class _TripInfo extends StatelessWidget {
+  const _TripInfo({
+    required this.trip,
+    required this.onFollow,
+    required this.onLike,
   });
   final TripDetail trip;
 
   /// Null on the caller's own trip, which hides the button.
   final VoidCallback? onFollow;
   final VoidCallback onLike;
-  final VoidCallback onSave;
-  final VoidCallback onBack;
-  final VoidCallback onMore;
-
-  static const _coverHeight = 340.0;
-
-  /// How far the rounded content sheet rides up over the photo.
-  static const _overlap = 24.0;
 
   @override
   Widget build(BuildContext context) {
@@ -455,70 +618,6 @@ class _FullHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: _coverHeight,
-          width: double.infinity,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _CoverPhoto(trip: trip),
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: Row(
-                      children: [
-                        _CircleAction(
-                          icon: Icons.arrow_back_ios_new,
-                          tooltip: 'Back',
-                          onPressed: onBack,
-                        ),
-                        const Spacer(),
-                        _CircleAction(
-                          icon: trip.isSaved
-                              ? Icons.bookmark
-                              : Icons.bookmark_border,
-                          tooltip: trip.isSaved ? 'Saved' : 'Save',
-                          color: trip.isSaved ? scheme.primary : null,
-                          onPressed: onSave,
-                        ),
-                        Builder(
-                          builder: (context) => _CircleAction(
-                            icon: Icons.share_outlined,
-                            tooltip: 'Share',
-                            onPressed: () => shareTrip(context, trip),
-                          ),
-                        ),
-                        _CircleAction(
-                          icon: Icons.more_horiz,
-                          tooltip: 'More',
-                          onPressed: onMore,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // Rounded top of the content sheet, overlapping the photo.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: _overlap,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(_overlap),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(
@@ -623,6 +722,59 @@ class _FullHeader extends StatelessWidget {
         ),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// Back, save, share and more, floating on the cover photo.
+class _CoverBar extends StatelessWidget {
+  const _CoverBar({
+    required this.trip,
+    required this.onSave,
+    required this.onBack,
+    required this.onMore,
+  });
+  final TripDetail trip;
+  final VoidCallback onSave;
+  final VoidCallback onBack;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Row(
+          children: [
+            _CircleAction(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Back',
+              onPressed: onBack,
+            ),
+            const Spacer(),
+            _CircleAction(
+              icon: trip.isSaved ? Icons.bookmark : Icons.bookmark_border,
+              tooltip: trip.isSaved ? 'Saved' : 'Save',
+              color: trip.isSaved ? scheme.primary : null,
+              onPressed: onSave,
+            ),
+            Builder(
+              builder: (context) => _CircleAction(
+                icon: Icons.share_outlined,
+                tooltip: 'Share',
+                onPressed: () => shareTrip(context, trip),
+              ),
+            ),
+            _CircleAction(
+              icon: Icons.more_horiz,
+              tooltip: 'More',
+              onPressed: onMore,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
