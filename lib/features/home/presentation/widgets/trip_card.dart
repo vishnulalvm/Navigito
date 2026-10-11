@@ -13,7 +13,7 @@ class TripCard extends StatefulWidget {
   final VoidCallback? onRoute;
 
   static const _radius = 20.0;
-  static const _imageAspect = 2.0;
+  static const _imageAspect = 1.7;
 
   static String _compact(int n) => n >= 1000
       ? '${(n / 1000).toStringAsFixed(1).replaceAll('.0', '')}K'
@@ -52,24 +52,30 @@ class _TripCardState extends State<TripCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AspectRatio(
-                aspectRatio: TripCard._imageAspect,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Uploaded cover, or a live Google photo of the first
-                    // stop; only loaded once the card is built on screen.
-                    TripCoverImage(
-                      coverUrl: trip.coverUrl,
-                      coverPlaceId: trip.coverPlaceId,
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(TripCard._radius - 8),
+                  child: AspectRatio(
+                    aspectRatio: TripCard._imageAspect,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Uploaded cover, or a live Google photo of the first
+                        // stop; only loaded once the card is built on screen.
+                        TripCoverImage(
+                          coverUrl: trip.coverUrl,
+                          coverPlaceId: trip.coverPlaceId,
+                        ),
+                        if (trip.photosCount > 1)
+                          Positioned(
+                            left: 12,
+                            bottom: 12,
+                            child: _PhotoCountBadge(count: trip.photosCount),
+                          ),
+                      ],
                     ),
-                    if (trip.photosCount > 1)
-                      Positioned(
-                        left: 12,
-                        bottom: 12,
-                        child: _PhotoCountBadge(count: trip.photosCount),
-                      ),
-                  ],
+                  ),
                 ),
               ),
               Padding(

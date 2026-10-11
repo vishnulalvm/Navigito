@@ -2,15 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../home/presentation/widgets/place_photos.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/utils/snackbar.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
+import '../../../home/presentation/widgets/place_photos.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
+import '../widgets/comments_sheet.dart';
 import '../widgets/overview_tab.dart';
 import '../widgets/photos_tab.dart';
 import '../widgets/route_tab.dart';
 import '../widgets/stops_tab.dart';
+import '../widgets/trip_share.dart';
 
 class TripDetailPage extends ConsumerStatefulWidget {
   const TripDetailPage({super.key, required this.tripId});
@@ -23,9 +27,39 @@ class TripDetailPage extends ConsumerStatefulWidget {
 class _TripDetailPageState extends ConsumerState<TripDetailPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 4, vsync: this)
-    ..addListener(() {
-      if (!_tabs.indexIsChanging) setState(() {});
-    });
+    ..addListener(_onTabChanged);
+
+  /// Tabs visited before the current one, so back retraces them.
+  final _tabHistory = <int>[];
+  int _shownTab = 0;
+  bool _goingBack = false;
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging || _tabs.index == _shownTab) return;
+    if (!_goingBack) {
+      // Revisiting a tab moves it to the top instead of stacking a loop.
+      _tabHistory
+        ..remove(_tabs.index)
+        ..add(_shownTab);
+    }
+    _goingBack = false;
+    setState(() => _shownTab = _tabs.index);
+  }
+
+  /// System back: steps to the previous tab first, then leaves the page.
+  void _onBack() {
+    if (_tabHistory.isNotEmpty) {
+      _goingBack = true;
+      _tabs.animateTo(_tabHistory.removeLast());
+    } else {
+      _leave();
+    }
+  }
+
+  /// Back to wherever the trip was opened from; home when it was opened by
+  /// a link and there is nothing underneath.
+  void _leave() =>
+      context.canPop() ? context.pop() : context.go(AppRouter.home);
 
   @override
   void dispose() {
@@ -37,21 +71,43 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
   Widget build(BuildContext context) {
     final async = ref.watch(tripDetailProvider(widget.tripId));
 
-    return Scaffold(
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => SafeArea(
-          child: Column(
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: BackButton(onPressed: context.pop),
-              ),
-              const Expanded(child: Center(child: Text('Could not load trip'))),
-            ],
+    return PopScope(
+      canPop: _tabHistory.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack();
+      },
+      child: Scaffold(
+        body: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => SafeArea(
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: BackButton(onPressed: _leave),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Could not load trip'),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () =>
+                              ref.invalidate(tripDetailProvider(widget.tripId)),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+          data: _buildContent,
         ),
-        data: _buildContent,
       ),
     );
   }
@@ -66,9 +122,105 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
     if (mounted) showErrorSnack(context, error);
   }
 
+  Future<void> _confirmDelete(TripDetail trip) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this trip?'),
+        content: Text(
+          '"${trip.title}" and its likes, saves and comments will be '
+          'removed for good.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final error = await ref.read(tripDetailProvider(trip.id).notifier).delete();
+    if (!mounted) return;
+    if (error != null) return showErrorSnack(context, error);
+    showErrorSnack(context, 'Trip deleted');
+    _leave();
+  }
+
+  Future<void> _showMore(TripDetail trip, {required bool own}) =>
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          void run(VoidCallback action) {
+            Navigator.pop(sheetContext);
+            action();
+          }
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(
+                    trip.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                  ),
+                  title: Text(trip.isSaved ? 'Remove from saved' : 'Save trip'),
+                  onTap: () => run(
+                    () => _guarded(
+                      'Sign in to save trips',
+                      ref.read(tripDetailProvider(trip.id).notifier).toggleSave,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.ios_share),
+                  title: const Text('Share'),
+                  onTap: () => run(() => shareTrip(context, trip)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: const Text('Copy link'),
+                  onTap: () => run(() => copyTripLink(context, trip)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.chat_bubble_outline),
+                  title: const Text('Comments'),
+                  onTap: () => run(() => showCommentsSheet(context, trip)),
+                ),
+                if (own)
+                  ListTile(
+                    leading: Icon(
+                      Icons.delete_outline,
+                      color: Theme.of(sheetContext).colorScheme.error,
+                    ),
+                    title: Text(
+                      'Delete trip',
+                      style: TextStyle(
+                        color: Theme.of(sheetContext).colorScheme.error,
+                      ),
+                    ),
+                    onTap: () => run(() => _confirmDelete(trip)),
+                  ),
+              ],
+            ),
+          );
+        },
+      );
+
   Widget _buildContent(TripDetail trip) {
-    final overview = _tabs.index == 0;
+    final overview = _shownTab == 0;
     final notifier = ref.read(tripDetailProvider(trip.id).notifier);
+    final me = ref.watch(authUserProvider.select((u) => u.valueOrNull?.id));
+    final own = me != null && me == trip.authorId;
 
     return Column(
       children: [
@@ -79,17 +231,24 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
           child: overview
               ? _FullHeader(
                   trip: trip,
-                  onFollow: () => _guarded(
-                    'Sign in to follow travellers',
-                    notifier.toggleFollow,
-                  ),
+                  // Nobody follows themselves.
+                  onFollow: own
+                      ? null
+                      : () => _guarded(
+                          'Sign in to follow travellers',
+                          notifier.toggleFollow,
+                        ),
                   onLike: () =>
                       _guarded('Sign in to like trips', notifier.toggleLike),
+                  onBack: _leave,
+                  onMore: () => _showMore(trip, own: own),
                 )
               : _CompactHeader(
                   trip: trip,
                   onLike: () =>
                       _guarded('Sign in to like trips', notifier.toggleLike),
+                  onBack: _onBack,
+                  onMore: () => _showMore(trip, own: own),
                 ),
         ),
         TabBar(
@@ -121,9 +280,16 @@ class _TripDetailPageState extends ConsumerState<TripDetailPage>
 }
 
 class _CompactHeader extends StatelessWidget {
-  const _CompactHeader({required this.trip, required this.onLike});
+  const _CompactHeader({
+    required this.trip,
+    required this.onLike,
+    required this.onBack,
+    required this.onMore,
+  });
   final TripDetail trip;
   final VoidCallback onLike;
+  final VoidCallback onBack;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +300,7 @@ class _CompactHeader extends StatelessWidget {
         child: Row(
           children: [
             const SizedBox(width: 4),
-            BackButton(onPressed: context.pop),
+            BackButton(onPressed: onBack),
             Expanded(
               child: Text(
                 trip.title,
@@ -151,7 +317,18 @@ class _CompactHeader extends StatelessWidget {
                 color: trip.isLiked ? Colors.pinkAccent : null,
               ),
             ),
-            IconButton(onPressed: () {}, icon: const Icon(Icons.more_horiz)),
+            Builder(
+              builder: (context) => IconButton(
+                tooltip: 'Share',
+                onPressed: () => shareTrip(context, trip),
+                icon: const Icon(Icons.ios_share),
+              ),
+            ),
+            IconButton(
+              tooltip: 'More',
+              onPressed: onMore,
+              icon: const Icon(Icons.more_horiz),
+            ),
           ],
         ),
       ),
@@ -164,10 +341,16 @@ class _FullHeader extends StatelessWidget {
     required this.trip,
     required this.onFollow,
     required this.onLike,
+    required this.onBack,
+    required this.onMore,
   });
   final TripDetail trip;
-  final VoidCallback onFollow;
+
+  /// Null on the caller's own trip, which hides the button.
+  final VoidCallback? onFollow;
   final VoidCallback onLike;
+  final VoidCallback onBack;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -223,10 +406,7 @@ class _FullHeader extends StatelessWidget {
                       data: const IconThemeData(color: Colors.white),
                       child: Row(
                         children: [
-                          BackButton(
-                            color: Colors.white,
-                            onPressed: context.pop,
-                          ),
+                          BackButton(color: Colors.white, onPressed: onBack),
                           const Spacer(),
                           IconButton(
                             onPressed: onLike,
@@ -239,12 +419,16 @@ class _FullHeader extends StatelessWidget {
                                   : Colors.white,
                             ),
                           ),
-                          IconButton(
-                            onPressed: () {},
-                            icon: const Icon(Icons.ios_share),
+                          Builder(
+                            builder: (context) => IconButton(
+                              tooltip: 'Share',
+                              onPressed: () => shareTrip(context, trip),
+                              icon: const Icon(Icons.ios_share),
+                            ),
                           ),
                           IconButton(
-                            onPressed: () {},
+                            tooltip: 'More',
+                            onPressed: onMore,
                             icon: const Icon(Icons.more_horiz),
                           ),
                         ],
@@ -288,15 +472,15 @@ class _FullHeader extends StatelessWidget {
                   style: theme.textTheme.bodyLarge,
                 ),
               ),
-              trip.isFollowing
-                  ? OutlinedButton(
-                      onPressed: onFollow,
-                      child: const Text('Following'),
-                    )
-                  : FilledButton(
-                      onPressed: onFollow,
-                      child: const Text('Follow'),
-                    ),
+              if (onFollow == null)
+                const SizedBox.shrink()
+              else if (trip.isFollowing)
+                OutlinedButton(
+                  onPressed: onFollow,
+                  child: const Text('Following'),
+                )
+              else
+                FilledButton(onPressed: onFollow, child: const Text('Follow')),
             ],
           ),
         ),

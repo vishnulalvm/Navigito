@@ -21,6 +21,7 @@ TripDetail tripDetailFromJson(Map<String, dynamic> json) {
     isLiked: json['is_liked'] == true,
     isSaved: json['is_saved'] == true,
     isFollowing: json['is_following'] == true,
+    isPublic: json['is_public'] != false,
     stops: [
       for (final s in (json['stops'] as List? ?? const []))
         _stop(s as Map<String, dynamic>),

@@ -6,6 +6,7 @@ import '../../../../core/utils/snackbar.dart';
 import '../../../auth/presentation/widgets/ensure_signed_in.dart';
 import '../../domain/entities/trip_detail.dart';
 import '../providers/trip_detail_providers.dart';
+import 'comments_sheet.dart';
 
 class OverviewTab extends ConsumerWidget {
   const OverviewTab({super.key, required this.trip});
@@ -18,6 +19,7 @@ class OverviewTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final notifier = ref.read(tripDetailProvider(trip.id).notifier);
     // One thumbnail per stop that has a photo (uploaded or live Google).
     final photos = [
@@ -33,20 +35,35 @@ class OverviewTab extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                trip.description,
-                style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final t in trip.tags)
-                    Chip(label: Text(t), side: BorderSide.none),
-                ],
-              ),
-              const SizedBox(height: 16),
+              if (trip.description.isNotEmpty) ...[
+                Text(
+                  trip.description,
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (trip.tags.isNotEmpty) ...[
+                // Filled pills: a borderless Material 3 chip has no fill and
+                // would show only its text.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final t in trip.tags.where((t) => t.isNotEmpty))
+                      Chip(
+                        label: Text(t[0].toUpperCase() + t.substring(1)),
+                        backgroundColor: scheme.secondaryContainer,
+                        labelStyle: theme.textTheme.labelLarge?.copyWith(
+                          color: scheme.onSecondaryContainer,
+                        ),
+                        side: BorderSide.none,
+                        shape: const StadiumBorder(),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               if (shown.isNotEmpty)
                 SizedBox(
                   height: 96,
@@ -117,10 +134,21 @@ class OverviewTab extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 24),
-                const Icon(Icons.chat_bubble_outline),
-                const SizedBox(width: 8),
-                Text('${trip.comments}'),
+                const SizedBox(width: 16),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => showCommentsSheet(context, trip),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.chat_bubble_outline),
+                        const SizedBox(width: 8),
+                        Text(_compact(trip.comments)),
+                      ],
+                    ),
+                  ),
+                ),
                 const Spacer(),
                 FilledButton.tonalIcon(
                   onPressed: () async {

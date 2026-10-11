@@ -46,7 +46,7 @@ class Trip extends Equatable {
   /// Photos the author uploaded across all stops.
   final int photosCount;
 
-  Trip copyWith({bool? isFavorite}) => Trip(
+  Trip copyWith({bool? isFavorite, int? likes}) => Trip(
     id: id,
     title: title,
     coverUrl: coverUrl,
@@ -54,7 +54,7 @@ class Trip extends Equatable {
     stops: stops,
     authorName: authorName,
     authorAvatarUrl: authorAvatarUrl,
-    likes: likes,
+    likes: likes ?? this.likes,
     distanceKm: distanceKm,
     places: places,
     isFavorite: isFavorite ?? this.isFavorite,
@@ -65,5 +65,5 @@ class Trip extends Equatable {
   );
 
   @override
-  List<Object?> get props => [id, isFavorite];
+  List<Object?> get props => [id, isFavorite, likes];
 }

@@ -113,6 +113,15 @@ class TripsNotifier extends AsyncNotifier<List<Trip>> {
     ]);
   }
 
+  /// Mirrors a like count changed on the trip screen.
+  void patchLikes(String id, int likes) {
+    final trips = state.valueOrNull;
+    if (trips == null || !trips.any((t) => t.id == id)) return;
+    state = AsyncData([
+      for (final t in trips) t.id == id ? t.copyWith(likes: likes) : t,
+    ]);
+  }
+
   /// Drops a deleted trip without reloading the feed.
   void drop(String id) {
     final trips = state.valueOrNull;

@@ -38,16 +38,6 @@ class MyTripsPage extends ConsumerWidget {
                           ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  IconButton.filled(
-                    onPressed: () => context.push(AppRouter.addTrip),
-                    icon: const Icon(Icons.add),
-                    style: IconButton.styleFrom(
-                      fixedSize: const Size(52, 52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

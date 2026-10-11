@@ -21,6 +21,7 @@ class TripDetail extends Equatable {
     this.isLiked = false,
     this.isFollowing = false,
     this.isSaved = false,
+    this.isPublic = true,
   });
 
   final String id;
@@ -43,6 +44,9 @@ class TripDetail extends Equatable {
   final bool isFollowing;
   final bool isSaved;
 
+  /// Private trips open only for their author, so they can't be shared.
+  final bool isPublic;
+
   int get stopCount => stops.length;
 
   TripDetail copyWith({
@@ -50,6 +54,7 @@ class TripDetail extends Equatable {
     bool? isFollowing,
     bool? isSaved,
     int? likes,
+    int? comments,
   }) => TripDetail(
     id: id,
     title: title,
@@ -62,14 +67,22 @@ class TripDetail extends Equatable {
     days: days,
     distanceKm: distanceKm,
     likes: likes ?? this.likes,
-    comments: comments,
+    comments: comments ?? this.comments,
     startDate: startDate,
     stops: stops,
     isLiked: isLiked ?? this.isLiked,
     isFollowing: isFollowing ?? this.isFollowing,
     isSaved: isSaved ?? this.isSaved,
+    isPublic: isPublic,
   );
 
   @override
-  List<Object?> get props => [id, likes, isLiked, isFollowing, isSaved];
+  List<Object?> get props => [
+    id,
+    likes,
+    comments,
+    isLiked,
+    isFollowing,
+    isSaved,
+  ];
 }

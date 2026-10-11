@@ -17,6 +17,7 @@ import '../../features/home/data/datasources/trip_social_remote_datasource.dart'
 import '../../features/home/data/datasources/trips_remote_datasource.dart';
 import '../../features/home/data/repositories/home_repository_impl.dart';
 import '../../features/home/domain/repositories/home_repository.dart';
+import '../../features/trip_detail/data/datasources/trip_comments_remote_datasource.dart';
 import '../../features/trip_detail/data/datasources/trip_detail_remote_datasource.dart';
 import '../../features/trip_detail/data/repositories/trip_detail_repository_impl.dart';
 import '../../features/trip_detail/domain/repositories/trip_detail_repository.dart';
@@ -64,7 +65,11 @@ Future<void> configureDependencies() async {
       ),
     )
     ..registerLazySingleton<TripDetailRepository>(
-      () => TripDetailRepositoryImpl(TripDetailRemoteDatasource(), social),
+      () => TripDetailRepositoryImpl(
+        TripDetailRemoteDatasource(),
+        social,
+        TripCommentsRemoteDatasource(),
+      ),
     )
     ..registerLazySingleton<RouteRepository>(
       () => RouteRepositoryImpl(RoutesRemoteDatasource(Dio())),
