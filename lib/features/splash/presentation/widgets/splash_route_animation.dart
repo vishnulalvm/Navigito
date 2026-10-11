@@ -258,13 +258,7 @@ class _RoutePainter extends CustomPainter {
     canvas.restore(); // circular clip
 
     // Thin lens edge.
-    _ring(
-      canvas,
-      center,
-      radius - 1,
-      foreground.withValues(alpha: 0.18),
-      1.5,
-    );
+    _ring(canvas, center, radius - 1, foreground.withValues(alpha: 0.18), 1.5);
   }
 
   void _ring(Canvas c, Offset at, double r, Color color, double width) {

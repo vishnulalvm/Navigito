@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/widgets/auth_gate.dart';
 import '../../features/home/presentation/pages/home_page.dart';
+import '../../features/journey/presentation/pages/journey_page.dart';
 import '../../features/info/presentation/content/legal_content.dart';
 import '../../features/info/presentation/pages/about_page.dart';
 import '../../features/info/presentation/pages/feedback_page.dart';
@@ -29,6 +30,7 @@ abstract final class AppRouter {
   static const about = '/about';
   static const feedback = '/feedback';
   static String tripDetail(String id) => '/trip/$id';
+  static String journey(String tripId) => '/trip/$tripId/journey';
 
   static final router = GoRouter(
     initialLocation: home,
@@ -150,6 +152,14 @@ abstract final class AppRouter {
         path: '/trip/:id',
         builder: (context, state) =>
             TripDetailPage(tripId: state.pathParameters['id']!),
+        routes: [
+          // Travelling the trip: stops ticked off as they're reached.
+          GoRoute(
+            path: 'journey',
+            builder: (context, state) =>
+                JourneyPage(tripId: state.pathParameters['id']!),
+          ),
+        ],
       ),
     ],
   );

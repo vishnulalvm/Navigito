@@ -146,7 +146,7 @@ final roadRouteProvider = FutureProvider.family<List<LatLng>, String>((
 });
 
 /// A trip's comments, newest first, loaded a page at a time.
-/// Dropped when the sheet closes, so reopening it shows fresh comments.
+/// Dropped when the Overview tab goes, so coming back shows fresh comments.
 class TripCommentsNotifier
     extends AutoDisposeFamilyAsyncNotifier<List<TripComment>, String> {
   static const _pageSize = 30;

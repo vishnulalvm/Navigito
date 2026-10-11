@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'category_style.dart';
 import 'place_photos.dart';
 import '../../domain/entities/trip.dart';
 
@@ -228,30 +229,6 @@ class _CategoryChip extends StatelessWidget {
 
   final String label;
 
-  static IconData _iconFor(String category) {
-    final c = category.toLowerCase();
-    if (c.contains('cultur')) return Icons.account_balance_outlined;
-    if (c.contains('histor')) return Icons.museum_outlined;
-    if (c.contains('nature') || c.contains('outdoor')) {
-      return Icons.park_outlined;
-    }
-    if (c.contains('advent') || c.contains('hik')) return Icons.hiking;
-    if (c.contains('beach')) return Icons.beach_access_outlined;
-    if (c.contains('food') || c.contains('culinary')) {
-      return Icons.restaurant_outlined;
-    }
-    if (c.contains('city') || c.contains('urban')) {
-      return Icons.location_city_outlined;
-    }
-    if (c.contains('road')) return Icons.directions_car_outlined;
-    if (c.contains('relax') || c.contains('wellness')) {
-      return Icons.spa_outlined;
-    }
-    if (c.contains('night')) return Icons.nightlife_outlined;
-    if (c.contains('shop')) return Icons.shopping_bag_outlined;
-    return Icons.local_offer_outlined;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -259,7 +236,7 @@ class _CategoryChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(_iconFor(label), size: 18, color: color),
+        Icon(categoryIcon(label), size: 18, color: color),
         const SizedBox(width: 6),
         Text(
           label[0].toUpperCase() + label.substring(1),

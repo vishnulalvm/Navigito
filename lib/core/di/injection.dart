@@ -7,6 +7,9 @@ import '../../features/add_trip/data/datasources/add_trip_remote_datasource.dart
 import '../../features/add_trip/data/repositories/add_trip_repository_impl.dart';
 import '../../features/add_trip/domain/repositories/add_trip_repository.dart';
 import '../../features/home/data/datasources/home_mock_datasource.dart';
+import '../../features/journey/data/datasources/journey_local_datasource.dart';
+import '../../features/journey/data/repositories/journey_repository_impl.dart';
+import '../../features/journey/domain/repositories/journey_repository.dart';
 import '../../features/info/data/datasources/feedback_remote_datasource.dart';
 import '../../features/info/data/repositories/feedback_repository_impl.dart';
 import '../../features/info/domain/repositories/feedback_repository.dart';
@@ -82,6 +85,9 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<AddTripRepository>(
       () => AddTripRepositoryImpl(AddTripRemoteDatasource()),
+    )
+    ..registerLazySingleton<JourneyRepository>(
+      () => JourneyRepositoryImpl(JourneyLocalDatasource(prefs)),
     )
     ..registerLazySingleton<FeedbackRepository>(
       () => FeedbackRepositoryImpl(FeedbackRemoteDatasource()),
